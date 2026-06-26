@@ -1,196 +1,110 @@
-import os, re, requests
+import os
+import re
+import requests
 from bs4 import BeautifulSoup
 from datetime import datetime
 
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
-# Mode test : envoie toujours les meilleurs résultats trouvés
-DEBUG_SEND_TOP_RESULTS = True
-MIN_SCORE_ALERT = 70
-MAX_ALERTS = 8
+MAX_RESULTS_TO_SEND = 5
 
 SEARCHES = [
-    # Pokémon scellé international
-    "pokemon sealed booster box",
-    "pokemon sealed display",
-    "pokemon elite trainer box sealed",
-    "pokemon center elite trainer box",
-    "pokemon ultra premium collection sealed",
-    "pokemon premium collection sealed",
-    "pokemon booster bundle sealed",
-    "pokemon collection box sealed",
-
-    # Japonais / High Class / séries recherchées
     "pokemon japanese booster box sealed",
-    "pokemon japan booster box sealed",
-    "pokemon high class pack sealed",
-    "pokemon vstar universe booster box",
-    "pokemon vmax climax booster box",
-    "pokemon shiny star v booster box",
-    "pokemon shiny treasure ex booster box",
-    "pokemon terastal festival booster box",
-    "pokemon battle partners booster box",
-    "pokemon 151 japanese booster box",
-    "pokemon eevee heroes booster box",
-    "pokemon blue sky stream booster box",
-    "pokemon dream league booster box",
-    "pokemon tag team gx booster box",
-    "pokemon clay burst booster box",
-    "pokemon ruler of the black flame booster box",
-
-    # Anglais / grosses séries
+    "pokemon 151 japanese booster box sealed",
+    "pokemon vstar universe booster box sealed",
+    "pokemon shiny treasure ex booster box sealed",
+    "pokemon terastal festival booster box sealed",
+    "pokemon eevee heroes booster box sealed",
     "pokemon evolving skies booster box sealed",
-    "pokemon fusion strike booster box sealed",
-    "pokemon chilling reign booster box sealed",
-    "pokemon brilliant stars booster box sealed",
-    "pokemon lost origin booster box sealed",
-    "pokemon silver tempest booster box sealed",
-    "pokemon scarlet violet booster box sealed",
-    "pokemon paldea evolved booster box sealed",
-    "pokemon obsidian flames booster box sealed",
-    "pokemon paradox rift booster box sealed",
-    "pokemon temporal forces booster box sealed",
-    "pokemon twilight masquerade booster box sealed",
-    "pokemon surging sparks booster box sealed",
-    "pokemon prismatic evolutions sealed",
-
-    # Lots / liquidation
+    "pokemon booster box sealed",
+    "pokemon elite trainer box sealed",
+    "pokemon center etb sealed",
     "pokemon sealed collection lot",
-    "pokemon sealed product lot",
-    "pokemon store stock sealed",
-    "pokemon liquidation sealed",
-    "pokemon bulk sealed boxes",
-
-    # Cartes très liquides uniquement
     "pokemon psa 10 alt art",
-    "pokemon psa 10 charizard",
-    "pokemon psa 10 pikachu promo",
-    "pokemon sar psa 10",
-    "pokemon japanese promo psa 10",
+    "topps chrome hobby box",
+    "topps chrome uefa hobby box",
+    "topps chrome marvel box",
+    "panini prizm hobby box",
+    "one piece booster box sealed",
+    "lorcana booster box sealed",
 ]
 
 BAD_WORDS = [
     "sticker", "stickers", "album", "empty", "wrapper", "digital",
     "proxy", "custom", "repack", "mystery", "random", "break",
     "case break", "live break", "opened", "damaged", "loose pack",
-    "code card", "jumbo only", "empty box", "no cards", "bundle only",
-    "art set only", "pack fresh", "read description"
+    "code card", "no cards", "empty box"
 ]
 
 PREMIUM_WORDS = [
-    "sealed", "factory sealed", "booster box", "display", "elite trainer box",
-    "etb", "pokemon center", "ultra premium", "upc", "premium collection",
-    "booster bundle", "japanese", "japan", "high class", "psa 10",
-    "alt art", "sar", "promo", "charizard", "pikachu", "eevee heroes",
-    "evolving skies", "151", "vstar universe", "vmax climax",
-    "terastal festival", "shiny treasure", "blue sky stream",
-    "dream league", "tag team", "sealed lot", "store stock", "liquidation"
-]
-
-VERY_STRONG = [
-    "eevee heroes", "evolving skies", "pokemon center", "151 japanese",
-    "vstar universe", "vmax climax", "dream league", "blue sky stream",
-    "tag team", "psa 10", "alt art", "sar", "sealed lot", "liquidation"
+    "sealed", "booster box", "display", "elite trainer box", "etb",
+    "pokemon center", "japanese", "151", "vstar universe",
+    "shiny treasure", "terastal festival", "eevee heroes",
+    "evolving skies", "psa 10", "alt art", "sar", "charizard",
+    "pikachu", "chrome", "hobby box", "prizm", "one piece", "lorcana"
 ]
 
 def send_telegram(message):
+    if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
+        print("Missing Telegram secrets")
+        return
+
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
     payload = {
         "chat_id": TELEGRAM_CHAT_ID,
         "text": message[:3900],
         "disable_web_page_preview": False
     }
+
     r = requests.post(url, json=payload, timeout=20)
     print("Telegram:", r.status_code, r.text[:200])
 
 def clean_url(url):
-    m = re.search(r"https://www\.ebay\.[^/]+/itm/\d+", url)
-    return m.group(0) if m else url.split("?")[0]
+    match = re.search(r"https://www\.ebay\.[^/]+/itm/\d+", url)
+    return match.group(0) if match else url.split("?")[0]
 
-def parse_price(price_text):
-    if not price_text:
-        return None
-    cleaned = price_text.replace(",", ".")
-    nums = re.findall(r"\d+(?:\.\d+)?", cleaned)
-    if not nums:
-        return None
-    try:
-        return float(nums[0])
-    except:
-        return None
-
-def score_deal(title, price_text, query):
-    text = f"{title} {price_text} {query}".lower()
-    score = 35
+def score_deal(title, price, query):
+    text = f"{title} {price} {query}".lower()
+    score = 40
 
     for bad in BAD_WORDS:
         if bad in text:
-            score -= 45
+            score -= 50
 
     for word in PREMIUM_WORDS:
         if word in text:
-            score += 4
-
-    for word in VERY_STRONG:
-        if word in text:
-            score += 8
-
-    price = parse_price(price_text)
-
-    if price:
-        if "booster box" in text or "display" in text:
-            if price < 80:
-                score += 18
-            elif price < 140:
-                score += 10
-            elif price > 500:
-                score -= 8
-
-        if "elite trainer" in text or "etb" in text:
-            if price < 45:
-                score += 15
-            elif price < 70:
-                score += 8
-
-        if "psa 10" in text:
-            if price < 100:
-                score += 12
-            elif price > 800:
-                score -= 10
-
-        if "lot" in text or "collection" in text or "stock" in text:
-            if price < 500:
-                score += 10
+            score += 5
 
     if "sealed" in text:
         score += 10
-    if "japanese" in text or "japan" in text:
-        score += 8
-    if "pokemon center" in text:
-        score += 12
     if "booster box" in text:
         score += 12
+    if "japanese" in text:
+        score += 8
+    if "pokemon center" in text:
+        score += 10
     if "psa 10" in text:
         score += 8
+    if "eevee heroes" in text or "evolving skies" in text:
+        score += 15
 
     return max(0, min(100, score))
 
-def verdict(score):
-    if score >= 90:
-        return "🔥 PRIORITÉ HAUTE — à vérifier immédiatement"
-    if score >= 80:
-        return "🟢 TRÈS INTÉRESSANT — comparaison marché nécessaire"
-    if score >= 70:
-        return "🟡 POTENTIEL — à analyser"
-    return "⚪ DEBUG — résultat utile pour calibrage"
-
 def search_ebay(query):
-    url = "https://www.ebay.com/sch/i.html"
-    params = {"_nkw": query, "_sop": "10", "LH_BIN": "1"}
-    headers = {"User-Agent": "Mozilla/5.0"}
-
     print(f"Searching eBay: {query}")
+
+    url = "https://www.ebay.com/sch/i.html"
+    params = {
+        "_nkw": query,
+        "_sop": "10",
+        "LH_BIN": "1"
+    }
+
+    headers = {
+        "User-Agent": "Mozilla/5.0"
+    }
+
     r = requests.get(url, params=params, headers=headers, timeout=25)
     soup = BeautifulSoup(r.text, "html.parser")
 
@@ -224,7 +138,7 @@ def search_ebay(query):
     return results
 
 def main():
-    print("🚀 Deal Hunter AI started")
+    print("Deal Hunter AI started")
     print("Time:", datetime.utcnow().isoformat(), "UTC")
 
     all_results = []
@@ -235,40 +149,42 @@ def main():
         except Exception as e:
             print("Error:", query, e)
 
-    seen = set()
     unique = []
+    seen_links = set()
 
-    for d in sorted(all_results, key=lambda x: x["score"], reverse=True):
-        if d["link"] in seen:
+    for result in sorted(all_results, key=lambda x: x["score"], reverse=True):
+        if result["link"] in seen_links:
             continue
-        seen.add(d["link"])
-        unique.append(d)
+        seen_links.add(result["link"])
+        unique.append(result)
 
-    if DEBUG_SEND_TOP_RESULTS:
-        selected = unique[:MAX_ALERTS]
-    else:
-        selected = [d for d in unique if d["score"] >= MIN_SCORE_ALERT][:MAX_ALERTS]
+    selected = unique[:MAX_RESULTS_TO_SEND]
 
-    if not selected:
-        send_telegram("✅ Deal Hunter AI lancé.\n\nAucun résultat exploitable détecté sur ce passage.")
-        print("No results.")
-        return
+    intro = f"""🔎 DEAL HUNTER AI — DEBUG
 
-    intro = f"""🔎 DEAL HUNTER AI — PASSAGE POKÉMON
+Passage terminé.
 
-Résultats analysés : {len(unique)}
-Alertes envoyées : {len(selected)}
-Mode : {"DEBUG TOP RESULTS" if DEBUG_SEND_TOP_RESULTS else "ALERTES FILTRÉES"}
+Résultats trouvés :
+{len(unique)}
 
-Objectif :
-Calibration du radar Pokémon global : japonais, anglais, scellé, lots, PSA 10, produits premium."""
+Résultats envoyés :
+{len(selected)}
+
+But :
+Voir ce que le robot détecte réellement pour calibrer le score Pokémon / Topps / Panini."""
+
     send_telegram(intro)
 
-    for deal in selected:
-        message = f"""🚨 DEAL HUNTER AI
+    if not selected:
+        send_telegram("Aucun résultat récupéré. Le scraping eBay est probablement limité ou bloqué sur ce passage.")
+        print("No results found.")
+        return
 
-Score : {deal['score']}/100
-Verdict : {verdict(deal['score'])}
+    for deal in selected:
+        message = f"""🚨 DEAL HUNTER AI — TEST RESULT
+
+Score :
+{deal['score']}/100
 
 Produit :
 {deal['title']}
@@ -286,22 +202,20 @@ Lien :
 {deal['link']}
 
 Analyse :
-Détection Pokémon large. Ce score ne prouve pas encore que c'est sous-coté : il indique que le produit mérite une comparaison marché.
+Résultat envoyé en mode debug. Ce n'est pas encore une recommandation d'achat.
 
-À vérifier avant achat :
-- ventes réalisées récentes
-- prix livré Suisse
-- langue / édition exacte
-- scellage réel
-- réputation vendeur
-- liquidité du produit
-- marge après frais
+À vérifier :
+- prix marché réel
+- ventes réalisées
+- frais Suisse
+- scellage
+- langue
+- liquidité
+- vendeur"""
 
-Décision :
-Ne pas acheter automatiquement. Utiliser cette alerte pour calibrer le moteur."""
         send_telegram(message)
 
-    print(f"✅ Sent {len(selected)} alerts")
+    print(f"Sent {len(selected)} debug results")
 
 if __name__ == "__main__":
     main()
