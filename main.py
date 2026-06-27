@@ -1924,8 +1924,15 @@ Heure :
             offer = item["offer"]
             ref = item["reference"]
 
+            item["deal_id"] = make_deal_id(item)
+            log_deal_to_sheet(item)
+            buttons = telegram_action_buttons(item)
+
             send_telegram(
                 f"""🚨 DEAL HUNTER AI — DEAL FLIP SOLIDE CONFIRMÉ
+
+Deal ID :
+{item['deal_id']}
 
 Décision flip :
 {item['flip_decision']}
@@ -1989,7 +1996,8 @@ ROI flip :
 
 Lien :
 {offer.get('url')}
-"""
+""",
+                reply_markup=buttons,
             )
     else:
         send_telegram(
@@ -1997,41 +2005,85 @@ Lien :
         )
 
     if watch_deals:
-        lines = []
-
         for item in watch_deals[:MAX_WATCH_MESSAGES]:
             offer = item["offer"]
             ref = item["reference"]
 
-            lines.append(
-                f"""— {offer.get('title')}
-Décision flip : {item['flip_decision']}
-Décision marché : {item['market_decision']}
-Preuve marché : {item.get('evidence_decision')} — {item.get('evidence_score')}/100
-Ventes réelles 90j : {item.get('evidence_sales_90')}
-Prix médian vendu : {item.get('evidence_median_text')}
-Confiance vendeur : {item['seller_confidence_label']} — {item['seller_confidence_score']}/100
-Risque : {item['seller_risk']}
-Action : {item['action_recommended']}
-Prix actuel : {offer.get('price_chf')} CHF
-Prix max flip : {item.get('target_buy_price')} CHF
-Écart flip : {item.get('gap_text')}
-Prix marché effectif : {item.get('market_effective_price')} CHF
-Fourchette marché : {item.get('market_range_text')}
-Source : {offer.get('source')}
-Pays vendeur : {offer.get('seller_country')}
-Référence : {ref.get('catalog_name')}
-Source référence : {ref.get('reference_source')}
-Profit flip estimé : {item['profit']} CHF
-ROI flip : {item['roi']} %
-Lien : {offer.get('url')}
-"""
-            )
+            item["deal_id"] = make_deal_id(item)
+            log_deal_to_sheet(item)
+            buttons = telegram_action_buttons(item)
 
-        send_telegram(
-            "🟡 DEAL HUNTER AI — À SURVEILLER / PREUVE MARCHÉ INSUFFISANTE\n\n"
-            + "\n".join(lines)
-        )
+            send_telegram(
+                f"""🟡 DEAL HUNTER AI — À SURVEILLER / PREUVE MARCHÉ INSUFFISANTE
+
+Deal ID :
+{item['deal_id']}
+
+Offre :
+{offer.get('title')}
+
+Décision flip :
+{item['flip_decision']}
+
+Décision marché :
+{item['market_decision']}
+
+Preuve marché :
+{item.get('evidence_decision')} — {item.get('evidence_score')}/100
+
+Ventes réelles 90j :
+{item.get('evidence_sales_90')}
+
+Prix médian vendu :
+{item.get('evidence_median_text')}
+
+Confiance vendeur :
+{item['seller_confidence_label']} — {item['seller_confidence_score']}/100
+
+Risque :
+{item['seller_risk']}
+
+Action recommandée :
+{item['action_recommended']}
+
+Prix actuel :
+{offer.get('price_chf')} CHF
+
+Prix max flip :
+{item.get('target_buy_price')} CHF
+
+Écart flip :
+{item.get('gap_text')}
+
+Prix marché effectif :
+{item.get('market_effective_price')} CHF
+
+Fourchette marché :
+{item.get('market_range_text')}
+
+Source :
+{offer.get('source')}
+
+Pays vendeur :
+{offer.get('seller_country')}
+
+Référence :
+{ref.get('catalog_name')}
+
+Source référence :
+{ref.get('reference_source')}
+
+Profit flip estimé :
+{item['profit']} CHF
+
+ROI flip :
+{item['roi']} %
+
+Lien :
+{offer.get('url')}
+""",
+                reply_markup=buttons,
+            )
 
     if near_misses:
         lines = []
