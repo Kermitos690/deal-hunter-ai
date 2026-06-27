@@ -2,46 +2,131 @@ name: Deal Hunter AI
 
 on:
   workflow_dispatch:
+    inputs:
+      mode:
+        description: "Mode"
+        required: true
+        default: "auto"
+        type: choice
+        options:
+          - auto
+          - manual
+      product_text:
+        description: "Produit à analyser manuellement"
+        required: false
+        default: ""
+      price_chf:
+        description: "Prix, exemple : 72 CHF"
+        required: false
+        default: ""
+      source:
+        description: "Source, exemple : Ricardo, eBay, CardMarket"
+        required: false
+        default: "Manual"
+      seller_country:
+        description: "Pays vendeur, exemple : CH, EBAY_UNKNOWN, UNKNOWN"
+        required: false
+        default: ""
+      url:
+        description: "Lien optionnel"
+        required: false
+        default: ""
+
   schedule:
     - cron: "0 */6 * * *"
+
+concurrency:
+  group: deal-hunter-ai
+  cancel-in-progress: true
 
 jobs:
   run:
     runs-on: ubuntu-latest
-
-    env:
-      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-      TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-
-      SERPAPI_API_KEY: ${{ secrets.SERPAPI_API_KEY }}
-      SERPAPI_COUNTRIES: ${{ secrets.SERPAPI_COUNTRIES }}
-
-      EBAY_CLIENT_ID: ${{ secrets.EBAY_CLIENT_ID }}
-      EBAY_CLIENT_SECRET: ${{ secrets.EBAY_CLIENT_SECRET }}
-      EBAY_MARKETPLACES: ${{ secrets.EBAY_MARKETPLACES }}
-
-      EMAIL_IMAP_SERVER: ${{ secrets.EMAIL_IMAP_SERVER }}
-      EMAIL_ADDRESS: ${{ secrets.EMAIL_ADDRESS }}
-      EMAIL_APP_PASSWORD: ${{ secrets.EMAIL_APP_PASSWORD }}
-
-      USD_TO_CHF: ${{ secrets.USD_TO_CHF }}
-      EUR_TO_CHF: ${{ secrets.EUR_TO_CHF }}
-      GBP_TO_CHF: ${{ secrets.GBP_TO_CHF }}
-      JPY_TO_CHF: ${{ secrets.JPY_TO_CHF }}
+    timeout-minutes: 20
 
     steps:
-      - name: Télécharger le projet
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Installer Python
+      - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
-      - name: Installer les dépendances
+      - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Lancer Deal Hunter AI
-        run: python main.py
+      - name: Run automatic Deal Hunter AI
+        if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.mode != 'manual' }}
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          SERPAPI_API_KEY: ${{ secrets.SERPAPI_API_KEY }}
+
+          EBAY_CLIENT_ID: ${{ secrets.EBAY_CLIENT_ID }}
+          EBAY_CLIENT_SECRET: ${{ secrets.EBAY_CLIENT_SECRET }}
+          EBAY_MARKETPLACES: ${{ secrets.EBAY_MARKETPLACES }}
+
+          EMAIL_IMAP_SERVER: ${{ secrets.EMAIL_IMAP_SERVER }}
+          EMAIL_ADDRESS: ${{ secrets.EMAIL_ADDRESS }}
+          EMAIL_APP_PASSWORD: ${{ secrets.EMAIL_APP_PASSWORD }}
+
+          SERPAPI_COUNTRIES: ${{ secrets.SERPAPI_COUNTRIES }}
+
+          USD_TO_CHF: ${{ secrets.USD_TO_CHF }}
+          EUR_TO_CHF: ${{ secrets.EUR_TO_CHF }}
+          GBP_TO_CHF: ${{ secrets.GBP_TO_CHF }}
+          JPY_TO_CHF: ${{ secrets.JPY_TO_CHF }}
+
+          DEAL_ALERT_MIN_SCORE: ${{ secrets.DEAL_ALERT_MIN_SCORE }}
+          WATCH_MIN_SCORE: ${{ secrets.WATCH_MIN_SCORE }}
+          MARKET_WATCH_MIN_SCORE: ${{ secrets.MARKET_WATCH_MIN_SCORE }}
+          MIN_SELLER_CONFIDENCE_FOR_AUTO_DEAL: ${{ secrets.MIN_SELLER_CONFIDENCE_FOR_AUTO_DEAL }}
+
+          MAX_REFERENCE_MESSAGES: ${{ secrets.MAX_REFERENCE_MESSAGES }}
+          MAX_DEAL_MESSAGES: ${{ secrets.MAX_DEAL_MESSAGES }}
+          MAX_WATCH_MESSAGES: ${{ secrets.MAX_WATCH_MESSAGES }}
+          MAX_NEAR_MISS_MESSAGES: ${{ secrets.MAX_NEAR_MISS_MESSAGES }}
+          MAX_REJECTED_MESSAGES: ${{ secrets.MAX_REJECTED_MESSAGES }}
+
+          SELLING_FEE_RATE: ${{ secrets.SELLING_FEE_RATE }}
+          EXPORT_SHIPPING_BUFFER_CHF: ${{ secrets.EXPORT_SHIPPING_BUFFER_CHF }}
+          IMPORT_SHIPPING_BUFFER_CHF: ${{ secrets.IMPORT_SHIPPING_BUFFER_CHF }}
+          IMPORT_DUTY_BUFFER_CHF: ${{ secrets.IMPORT_DUTY_BUFFER_CHF }}
+          MIN_PROFIT_CHF: ${{ secrets.MIN_PROFIT_CHF }}
+          PRICECHARTING_SLEEP_SECONDS: ${{ secrets.PRICECHARTING_SLEEP_SECONDS }}
+        run: |
+          python main.py
+
+      - name: Run manual value analysis
+        if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.mode == 'manual' }}
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+
+          USD_TO_CHF: ${{ secrets.USD_TO_CHF }}
+          EUR_TO_CHF: ${{ secrets.EUR_TO_CHF }}
+          GBP_TO_CHF: ${{ secrets.GBP_TO_CHF }}
+          JPY_TO_CHF: ${{ secrets.JPY_TO_CHF }}
+
+          DEAL_ALERT_MIN_SCORE: ${{ secrets.DEAL_ALERT_MIN_SCORE }}
+          WATCH_MIN_SCORE: ${{ secrets.WATCH_MIN_SCORE }}
+          MARKET_WATCH_MIN_SCORE: ${{ secrets.MARKET_WATCH_MIN_SCORE }}
+          MIN_SELLER_CONFIDENCE_FOR_AUTO_DEAL: ${{ secrets.MIN_SELLER_CONFIDENCE_FOR_AUTO_DEAL }}
+
+          SELLING_FEE_RATE: ${{ secrets.SELLING_FEE_RATE }}
+          EXPORT_SHIPPING_BUFFER_CHF: ${{ secrets.EXPORT_SHIPPING_BUFFER_CHF }}
+          IMPORT_SHIPPING_BUFFER_CHF: ${{ secrets.IMPORT_SHIPPING_BUFFER_CHF }}
+          IMPORT_DUTY_BUFFER_CHF: ${{ secrets.IMPORT_DUTY_BUFFER_CHF }}
+          MIN_PROFIT_CHF: ${{ secrets.MIN_PROFIT_CHF }}
+          PRICECHARTING_SLEEP_SECONDS: ${{ secrets.PRICECHARTING_SLEEP_SECONDS }}
+
+          MANUAL_PRODUCT_TEXT: ${{ github.event.inputs.product_text }}
+          MANUAL_PRICE_CHF: ${{ github.event.inputs.price_chf }}
+          MANUAL_SOURCE: ${{ github.event.inputs.source }}
+          MANUAL_SELLER_COUNTRY: ${{ github.event.inputs.seller_country }}
+          MANUAL_URL: ${{ github.event.inputs.url }}
+        run: |
+          python manual_value.py
