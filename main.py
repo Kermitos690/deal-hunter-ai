@@ -62,6 +62,7 @@ MAX_REJECTED_MESSAGES = env_int("MAX_REJECTED_MESSAGES", 8)
 
 DEAL_ALERT_MIN_SCORE = env_int("DEAL_ALERT_MIN_SCORE", 75)
 WATCH_MIN_SCORE = env_int("WATCH_MIN_SCORE", 45)
+MARKET_WATCH_MIN_SCORE = env_int("MARKET_WATCH_MIN_SCORE", 55)
 
 SELLING_FEE_RATE = env_float("SELLING_FEE_RATE", 0.13)
 EXPORT_SHIPPING_BUFFER_CHF = env_float("EXPORT_SHIPPING_BUFFER_CHF", 25)
@@ -270,6 +271,9 @@ CATALOG = [
             "chinese",
             "proxy",
             "single pack",
+            "jumbo",
+            "oversized",
+            "giant",
         ],
         "swiss_range": (90, 150),
         "fallback_international_chf": 445,
@@ -341,6 +345,9 @@ BAD_BOOSTER_BOX_TYPE_TERMS = [
     "case of",
     "deck",
     "starter deck",
+    "jumbo",
+    "oversized",
+    "giant",
 ]
 
 
@@ -816,7 +823,7 @@ def serpapi_google_shopping_offers(config: dict) -> list[dict]:
                 forced_reject_reason = None
 
                 if is_booster_box_config(config) and is_wrong_booster_box_type(title):
-                    forced_reject_reason = "Mauvais type de produit : Special Set / collection / lot / case ≠ vraie booster box"
+                    forced_reject_reason = "Mauvais type de produit : Special Set / collection / lot / case / jumbo ≠ vraie booster box"
                 elif not matches_catalog(title, config):
                     continue
 
@@ -1163,7 +1170,13 @@ def reject_result(offer, ref, reason):
         "reason": reason,
         "target_buy_price": None,
         "gap_to_target": None,
-        "decision": "⚠️ REJETÉ",
+        "gap_text": "Non calculable",
+        "flip_decision": "⚠️ REJETÉ",
+        "market_decision": "⚠️ REJETÉ",
+        "market_score": 0,
+        "market_effective_price": None,
+        "market_gap_text": "Non calculable",
+        "market_range_text": "Non calculable",
         "negotiation_advice": "Ne pas acheter",
     }
 
@@ -1190,7 +1203,7 @@ def make_negotiation_advice(offer, target_buy_price):
         high = round(target_buy_price, 2)
         return f"Proposer environ {low}–{high} CHF, ne pas dépasser {high} CHF"
 
-    return f"Prix maximum conseillé : {round(target_buy_price, 2)} CHF"
+    return f"Prix max flip conseillé : {round(target_buy_price, 2)} CHF"
 
 
 def compute_target_prices(direction, ref_chf, swiss_low):
@@ -1211,6 +1224,67 @@ def compute_target_prices(direction, ref_chf, swiss_low):
     return None, None
 
 
+def compute_market_view(offer, ref, landed_import):
+    swiss_range = ref.get("swiss_range")
+    seller_country = str(offer.get("seller_country") or "UNKNOWN").upper()
+    price_chf = float(offer.get("price_chf") or 0)
+
+    if not swiss_range:
+        return {
+            "market_decision": "⚪ Marché non calibré",
+            "market_score": 0,
+            "market_effective_price": None,
+            "market_gap_text": "Non calculable",
+            "market_range_text": "Non calibré",
+            "market_basis": "Non calculable",
+        }
+
+    swiss_low, swiss_high = swiss_range
+
+    if seller_country == "CH":
+        effective_price = price_chf
+        basis = "Prix vendeur Suisse"
+    else:
+        effective_price = landed_import
+        basis = "Prix rendu Suisse estimé"
+
+    market_range_text = f"{swiss_low}–{swiss_high} CHF"
+
+    if effective_price <= swiss_low * 0.85:
+        decision = "🟢 Très bon prix marché"
+        score = 80
+    elif effective_price <= swiss_low:
+        decision = "🟢 Bon prix marché"
+        score = 70
+    elif effective_price <= swiss_high:
+        decision = "🟡 Prix marché correct"
+        score = 60
+    elif effective_price <= swiss_high * 1.15:
+        decision = "🟠 Un peu cher marché"
+        score = 40
+    else:
+        decision = "🔴 Trop cher marché"
+        score = 20
+
+    market_gap = round(effective_price - swiss_low, 2)
+
+    if market_gap > 0:
+        gap_text = f"{market_gap} CHF au-dessus du bas marché"
+    elif market_gap < 0:
+        gap_text = f"{abs(market_gap)} CHF sous le bas marché"
+    else:
+        gap_text = "Exactement au bas marché"
+
+    return {
+        "market_decision": decision,
+        "market_score": score,
+        "market_effective_price": round(effective_price, 2),
+        "market_gap_text": gap_text,
+        "market_range_text": market_range_text,
+        "market_basis": basis,
+    }
+
+
 def evaluate_offer(offer: dict, ref: dict | None) -> dict:
     if offer.get("forced_reject_reason"):
         return reject_result(offer, ref, offer.get("forced_reject_reason"))
@@ -1229,7 +1303,7 @@ def evaluate_offer(offer: dict, ref: dict | None) -> dict:
         return reject_result(offer, ref, "Source exclue")
 
     if is_wrong_booster_box_type(title):
-        return reject_result(offer, ref, "Mauvais type de produit : Special Set / collection / lot / case ≠ vraie booster box")
+        return reject_result(offer, ref, "Mauvais type de produit : Special Set / collection / lot / case / jumbo ≠ vraie booster box")
 
     swiss_range = ref.get("swiss_range")
     if not swiss_range:
@@ -1261,6 +1335,8 @@ def evaluate_offer(offer: dict, ref: dict | None) -> dict:
         roi = round((profit / landed_import) * 100, 1) if landed_import > 0 else 0
         net_export = round(ref_chf * (1 - SELLING_FEE_RATE) - EXPORT_SHIPPING_BUFFER_CHF, 2)
 
+    market_view = compute_market_view(offer, ref, landed_import)
+
     gap_to_target = round(price_chf - target_buy_price, 2) if target_buy_price is not None else None
 
     score = 0
@@ -1269,19 +1345,19 @@ def evaluate_offer(offer: dict, ref: dict | None) -> dict:
 
     if gap_to_target is not None and gap_to_target <= 0 and profit >= MIN_PROFIT_CHF and roi >= 15:
         score = 80
-        verdict = "🟢 Achat possible selon le prix cible"
+        verdict = "🟢 Achat possible selon le prix cible flip"
     elif gap_to_target is not None and gap_to_target <= 25 and profit >= 0:
         score = 60
-        verdict = "🟡 Très proche du prix cible / négocier"
-        reason = "Proche du prix cible"
+        verdict = "🟡 Très proche du prix cible flip / négocier"
+        reason = "Proche du prix cible flip"
     elif gap_to_target is not None and gap_to_target <= 75:
         score = 50
         verdict = "🟡 À surveiller si baisse de prix"
-        reason = "Pas assez bas, mais proche"
+        reason = "Pas assez bas pour flip, mais proche"
     else:
         score = 35
-        verdict = "🔴 Trop cher"
-        reason = "Prix trop éloigné du prix cible"
+        verdict = "🔴 Trop cher pour flip"
+        reason = "Prix trop éloigné du prix cible flip"
 
     if direction == "EXPORT_CH" and profit < MIN_PROFIT_CHF:
         reason = "Marge export insuffisante"
@@ -1305,13 +1381,13 @@ def evaluate_offer(offer: dict, ref: dict | None) -> dict:
             verdict = "🟡 À vérifier : référence interne, pas encore deal solide"
 
     if gap_to_target is not None and gap_to_target > 0:
-        decision = "🔴 TROP CHER"
+        flip_decision = "🔴 PAS POUR FLIP"
     elif score >= DEAL_ALERT_MIN_SCORE:
-        decision = "🟢 ACHAT POSSIBLE"
+        flip_decision = "🟢 FLIP POSSIBLE"
     elif score >= WATCH_MIN_SCORE:
-        decision = "🟡 À SURVEILLER / NÉGOCIER"
+        flip_decision = "🟡 FLIP À NÉGOCIER"
     else:
-        decision = "🔴 TROP CHER"
+        flip_decision = "🔴 PAS POUR FLIP"
 
     negotiation_advice = make_negotiation_advice(offer, target_buy_price)
 
@@ -1332,22 +1408,29 @@ def evaluate_offer(offer: dict, ref: dict | None) -> dict:
         "target_buy_price": target_buy_price,
         "gap_to_target": gap_to_target,
         "gap_text": make_gap_text(gap_to_target),
-        "decision": decision,
+        "flip_decision": flip_decision,
+        "market_decision": market_view["market_decision"],
+        "market_score": market_view["market_score"],
+        "market_effective_price": market_view["market_effective_price"],
+        "market_gap_text": market_view["market_gap_text"],
+        "market_range_text": market_view["market_range_text"],
+        "market_basis": market_view["market_basis"],
         "negotiation_advice": negotiation_advice,
     }
 
 
 def proximity_sort_key(item):
+    market_score = item.get("market_score", 0)
+    flip_score = item.get("score", 0)
     gap = item.get("gap_to_target")
-    score = item.get("score", 0)
 
     if gap is None:
-        return (999999, -score)
+        gap = 999999
 
     if gap < 0:
-        return (0, -score)
+        gap = 0
 
-    return (gap, -score)
+    return (-market_score, gap, -flip_score)
 
 
 # =========================
@@ -1425,31 +1508,38 @@ def main():
     references = sorted(references, key=lambda x: x["score"], reverse=True)
 
     good_deals = [x for x in evaluated if x["score"] >= DEAL_ALERT_MIN_SCORE]
+
     watch_deals = [
         x for x in evaluated
-        if WATCH_MIN_SCORE <= x["score"] < DEAL_ALERT_MIN_SCORE
+        if x["score"] < DEAL_ALERT_MIN_SCORE
+        and (
+            x["score"] >= WATCH_MIN_SCORE
+            or x["market_score"] >= MARKET_WATCH_MIN_SCORE
+        )
     ]
+
     near_misses = [
         x for x in evaluated
-        if x["score"] < WATCH_MIN_SCORE
+        if x not in good_deals and x not in watch_deals
     ]
 
     export_deals = [x for x in good_deals if x["direction"] == "EXPORT_CH"]
     import_deals = [x for x in good_deals if x["direction"] == "IMPORT_TO_CH"]
+    market_ok = [x for x in evaluated if x["market_score"] >= MARKET_WATCH_MIN_SCORE]
 
     send_telegram(
-        f"""🔎 DEAL HUNTER AI — UNIVERSAL DEAL ENGINE V6.8
+        f"""🔎 DEAL HUNTER AI — UNIVERSAL DEAL ENGINE V6.9
 
 Statut :
-Moteur multi-sources activé avec décision d'achat.
+Moteur multi-sources activé avec double décision.
 
-Améliorations V6.8 :
-Prix maximum d'achat conseillé ajouté.
-Écart exact avec le prix cible ajouté.
-Décision claire : achat / négocier / trop cher / rejeté.
-Prix de négociation conseillé pour Ricardo / Suisse.
-Classement par proximité du deal.
-Messages références réduits.
+Améliorations V6.9 :
+Décision FLIP séparée de décision MARCHÉ.
+Prix max flip conservé.
+Prix rendu Suisse estimé ajouté.
+Prix marché acceptable ajouté.
+Jumbo / oversized / giant rejetés.
+Les offres correctes au prix marché ne sont plus confondues avec des deals de flip.
 
 Sources :
 {chr(10).join(source_status)}
@@ -1469,11 +1559,14 @@ Offres analysées :
 Offres rejetées :
 {len(rejected)}
 
-Deals solides :
+Deals solides flip :
 {len(good_deals)}
 
-À surveiller / négocier :
+À surveiller / prix marché correct :
 {len(watch_deals)}
+
+Prix marché corrects :
+{len(market_ok)}
 
 Pistes non retenues :
 {len(near_misses)}
@@ -1487,10 +1580,10 @@ Import étranger → Suisse :
 Pays SerpApi :
 {", ".join(SERPAPI_COUNTRIES)}
 
-Seuil alerte :
+Seuil alerte flip :
 {DEAL_ALERT_MIN_SCORE}/100
 
-Profit minimal voulu :
+Profit minimal flip voulu :
 {MIN_PROFIT_CHF} CHF
 
 Conversions :
@@ -1512,16 +1605,22 @@ Heure :
             swiss_text = f"{swiss[0]}–{swiss[1]} CHF" if swiss else "Non calibré"
 
             send_telegram(
-                f"""🚨 DEAL HUNTER AI — DEAL SOLIDE
+                f"""🚨 DEAL HUNTER AI — DEAL FLIP SOLIDE
 
-Décision :
-{item['decision']}
+Décision flip :
+{item['flip_decision']}
+
+Décision marché :
+{item['market_decision']}
 
 Verdict :
 {item['verdict']}
 
-Score :
+Score flip :
 {item['score']}/100
+
+Score marché :
+{item['market_score']}/100
 
 Direction :
 {item['direction_label']}
@@ -1532,17 +1631,26 @@ Offre :
 Prix actuel :
 {offer.get('price_chf')} CHF
 
-Prix maximum conseillé :
+Prix max flip :
 {item.get('target_buy_price')} CHF
 
-Écart au deal :
+Écart flip :
 {item.get('gap_text')}
+
+Prix marché effectif :
+{item.get('market_effective_price')} CHF
+
+Base marché :
+{item.get('market_basis')}
+
+Fourchette marché :
+{item.get('market_range_text')}
+
+Écart marché :
+{item.get('market_gap_text')}
 
 Négociation :
 {item.get('negotiation_advice')}
-
-Prix original :
-{offer.get('raw_price', 'Non précisé')}
 
 Source :
 {offer.get('source')}
@@ -1562,10 +1670,10 @@ Prix référence :
 Marché suisse estimé :
 {swiss_text}
 
-Profit estimé :
+Profit flip estimé :
 {item['profit']} CHF
 
-ROI estimé :
+ROI flip estimé :
 {item['roi']} %
 
 Raison :
@@ -1576,14 +1684,11 @@ Lien offre :
 
 Lien référence :
 {ref.get('url')}
-
-Action :
-Vérifier disponibilité, état scellé, langue, vendeur réel et frais de port avant achat.
 """
             )
     else:
         send_telegram(
-            "⚪ Aucun deal solide détecté. Le bot affiche les offres à négocier et les meilleures pistes non retenues."
+            "⚪ Aucun deal flip solide détecté. Le bot affiche maintenant les prix marché corrects séparément."
         )
 
     if watch_deals:
@@ -1595,26 +1700,30 @@ Vérifier disponibilité, état scellé, langue, vendeur réel et frais de port 
 
             lines.append(
                 f"""— {offer.get('title')}
-Décision : {item['decision']}
-Score : {item['score']}/100
-Verdict : {item['verdict']}
+Décision flip : {item['flip_decision']}
+Décision marché : {item['market_decision']}
+Score flip : {item['score']}/100
+Score marché : {item['market_score']}/100
 Prix actuel : {offer.get('price_chf')} CHF
-Prix maximum conseillé : {item.get('target_buy_price')} CHF
-Écart : {item.get('gap_text')}
-Négociation : {item.get('negotiation_advice')}
+Prix max flip : {item.get('target_buy_price')} CHF
+Écart flip : {item.get('gap_text')}
+Prix marché effectif : {item.get('market_effective_price')} CHF
+Base marché : {item.get('market_basis')}
+Fourchette marché : {item.get('market_range_text')}
+Écart marché : {item.get('market_gap_text')}
 Source : {offer.get('source')}
 Pays vendeur : {offer.get('seller_country')}
 Référence : {ref.get('catalog_name')}
 Source référence : {ref.get('reference_source')}
-Profit estimé : {item['profit']} CHF
-ROI : {item['roi']} %
-Raison : {item.get('reason') or 'À vérifier'}
+Profit flip estimé : {item['profit']} CHF
+ROI flip : {item['roi']} %
+Raison : {item.get('reason') or 'Prix marché à vérifier'}
 Lien : {offer.get('url')}
 """
             )
 
         send_telegram(
-            "🟡 DEAL HUNTER AI — À SURVEILLER / NÉGOCIER\n\n"
+            "🟡 DEAL HUNTER AI — À SURVEILLER / PRIX MARCHÉ CORRECT\n\n"
             + "\n".join(lines)
         )
 
@@ -1631,19 +1740,21 @@ Lien : {offer.get('url')}
 
             lines.append(
                 f"""— {offer.get('title')}
-Décision : {item['decision']}
-Score : {item['score']}/100
-Verdict : {item['verdict']}
+Décision flip : {item['flip_decision']}
+Décision marché : {item['market_decision']}
+Score flip : {item['score']}/100
+Score marché : {item['market_score']}/100
 Prix actuel : {offer.get('price_chf')} CHF
-Prix maximum conseillé : {item.get('target_buy_price')} CHF
-Écart : {item.get('gap_text')}
-Négociation : {item.get('negotiation_advice')}
+Prix max flip : {item.get('target_buy_price')} CHF
+Écart flip : {item.get('gap_text')}
+Prix marché effectif : {item.get('market_effective_price')} CHF
+Fourchette marché : {item.get('market_range_text')}
 Source : {offer.get('source')}
 Pays vendeur : {offer.get('seller_country')}
 Référence : {ref_name}
 Source référence : {ref_source}
-Profit estimé : {item['profit']} CHF
-ROI : {item['roi']} %
+Profit flip estimé : {item['profit']} CHF
+ROI flip : {item['roi']} %
 Pourquoi non retenu :
 {reason}
 Lien : {offer.get('url')}
@@ -1664,7 +1775,7 @@ Lien : {offer.get('url')}
 Prix : {offer.get('price_chf')} CHF
 Source : {offer.get('source')}
 Pays vendeur : {offer.get('seller_country')}
-Décision : {item.get('decision')}
+Décision : {item.get('flip_decision')}
 Raison : {item.get('reason') or item.get('verdict')}
 """
             )
