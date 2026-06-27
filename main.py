@@ -54,11 +54,13 @@ EUR_TO_CHF = env_float("EUR_TO_CHF", 0.96)
 GBP_TO_CHF = env_float("GBP_TO_CHF", 1.13)
 JPY_TO_CHF = env_float("JPY_TO_CHF", 0.0058)
 
-MAX_REFERENCE_MESSAGES = env_int("MAX_REFERENCE_MESSAGES", 6)
+MAX_REFERENCE_MESSAGES = env_int("MAX_REFERENCE_MESSAGES", 8)
 MAX_DEAL_MESSAGES = env_int("MAX_DEAL_MESSAGES", 8)
-MAX_REJECTED_MESSAGES = env_int("MAX_REJECTED_MESSAGES", 8)
+MAX_WATCH_MESSAGES = env_int("MAX_WATCH_MESSAGES", 8)
+MAX_REJECTED_MESSAGES = env_int("MAX_REJECTED_MESSAGES", 6)
 
 DEAL_ALERT_MIN_SCORE = env_int("DEAL_ALERT_MIN_SCORE", 75)
+WATCH_MIN_SCORE = env_int("WATCH_MIN_SCORE", 45)
 
 SELLING_FEE_RATE = env_float("SELLING_FEE_RATE", 0.13)
 EXPORT_SHIPPING_BUFFER_CHF = env_float("EXPORT_SHIPPING_BUFFER_CHF", 25)
@@ -136,7 +138,7 @@ SHOPPING_COUNTRY_CONFIG = {
 
 
 # =========================
-# CATALOGUE STRICT
+# CATALOGUE STRICT + BASE INTERNE
 # =========================
 
 CATALOG = [
@@ -157,6 +159,8 @@ CATALOG = [
             "proxy",
         ],
         "swiss_range": (650, 850),
+        "fallback_international_chf": 2200,
+        "fallback_confidence": "Moyenne",
     },
     {
         "name": "Pokémon 151 JP Booster Box",
@@ -176,6 +180,8 @@ CATALOG = [
             "single pack",
         ],
         "swiss_range": (115, 145),
+        "fallback_international_chf": 265,
+        "fallback_confidence": "Moyenne",
     },
     {
         "name": "Pokémon Eevee Heroes JP Booster Box",
@@ -184,6 +190,8 @@ CATALOG = [
         "required": ["pokemon", "japanese", "eevee heroes", "booster box"],
         "exclude": ["korean", "chinese", "single pack"],
         "swiss_range": (420, 550),
+        "fallback_international_chf": 750,
+        "fallback_confidence": "Moyenne",
     },
     {
         "name": "Pokémon VSTAR Universe JP Booster Box",
@@ -192,6 +200,8 @@ CATALOG = [
         "required": ["pokemon", "japanese", "vstar universe", "booster box"],
         "exclude": ["korean", "chinese", "single pack"],
         "swiss_range": (95, 130),
+        "fallback_international_chf": 185,
+        "fallback_confidence": "Moyenne",
     },
     {
         "name": "Pokémon VMAX Climax JP Booster Box",
@@ -200,6 +210,8 @@ CATALOG = [
         "required": ["pokemon", "japanese", "vmax climax", "booster box"],
         "exclude": ["korean", "chinese", "single pack", "time warp", "subscribe"],
         "swiss_range": (130, 180),
+        "fallback_international_chf": 170,
+        "fallback_confidence": "Moyenne",
     },
     {
         "name": "Pokémon Terastal Festival JP Booster Box",
@@ -208,6 +220,8 @@ CATALOG = [
         "required": ["pokemon", "japanese", "terastal festival", "booster box"],
         "exclude": ["korean", "chinese", "single pack"],
         "swiss_range": (85, 120),
+        "fallback_international_chf": 85,
+        "fallback_confidence": "Moyenne",
     },
     {
         "name": "Pokémon Blue Sky Stream JP Booster Box",
@@ -216,6 +230,8 @@ CATALOG = [
         "required": ["pokemon", "japanese", "blue sky stream", "booster box"],
         "exclude": ["korean", "chinese", "single pack"],
         "swiss_range": (130, 190),
+        "fallback_international_chf": 160,
+        "fallback_confidence": "Moyenne",
     },
     {
         "name": "Pokémon Dream League JP Booster Box",
@@ -224,6 +240,8 @@ CATALOG = [
         "required": ["pokemon", "japanese", "dream league", "booster box"],
         "exclude": ["korean", "chinese", "single pack"],
         "swiss_range": (230, 330),
+        "fallback_international_chf": 740,
+        "fallback_confidence": "Faible",
     },
     {
         "name": "Topps Chrome UEFA Hobby Box",
@@ -233,6 +251,8 @@ CATALOG = [
         "any_of": ["uefa", "ucl", "champions"],
         "exclude": ["disney", "marvel", "star wars", "baseball", "formula", "f1"],
         "swiss_range": (90, 150),
+        "fallback_international_chf": 130,
+        "fallback_confidence": "Faible",
     },
     {
         "name": "One Piece Carrying On His Will Booster Box",
@@ -251,6 +271,8 @@ CATALOG = [
             "single pack",
         ],
         "swiss_range": (90, 150),
+        "fallback_international_chf": 445,
+        "fallback_confidence": "Moyenne",
     },
     {
         "name": "Lorcana Wilds Unknown Booster Box",
@@ -259,6 +281,8 @@ CATALOG = [
         "required": ["lorcana", "wilds unknown", "booster box"],
         "exclude": ["german", "deutsch", "italian", "spanish", "single pack"],
         "swiss_range": (180, 230),
+        "fallback_international_chf": 190,
+        "fallback_confidence": "Moyenne",
     },
 ]
 
@@ -441,15 +465,10 @@ def clean_number(raw: str) -> float:
     raw = str(raw).strip()
     raw = raw.replace("’", "'")
     raw = raw.replace(" ", "")
-
-    # Format suisse : 2'458.00
     raw = raw.replace("'", "")
 
-    # Format US : 2,458.00
     if "," in raw and "." in raw:
         raw = raw.replace(",", "")
-
-    # Format européen : 2458,00
     elif "," in raw and "." not in raw:
         if len(raw.split(",")[-1]) == 2:
             raw = raw.replace(",", ".")
@@ -464,16 +483,12 @@ def currency_to_chf(amount: float, currency: str) -> float | None:
 
     if cur in ["CHF", "SFR", "FR", "FR."]:
         return round(amount, 2)
-
     if cur in ["USD", "$"]:
         return round(amount * USD_TO_CHF, 2)
-
     if cur in ["EUR", "€"]:
         return round(amount * EUR_TO_CHF, 2)
-
     if cur in ["GBP", "£"]:
         return round(amount * GBP_TO_CHF, 2)
-
     if cur in ["JPY", "¥"]:
         return round(amount * JPY_TO_CHF, 2)
 
@@ -568,7 +583,6 @@ def detect_seller_country(source: str, url: str) -> str:
     if any(term in blob for term in SWISS_SOURCE_HINTS):
         return "CH"
 
-    # Important : google.ch ne veut pas dire que le vendeur est suisse.
     if ".ch" in blob and "google.ch" not in blob:
         return "CH"
 
@@ -582,23 +596,55 @@ def detect_seller_country(source: str, url: str) -> str:
 
 
 # =========================
-# PRICECHARTING
+# RÉFÉRENCES MARCHÉ
 # =========================
 
-def compute_reference_score(main_chf: float, swiss_range: tuple[int, int] | None) -> int:
-    score = 50
+def compute_reference_score(main_chf: float, swiss_range: tuple[int, int] | None, source: str) -> int:
+    score = 48
+
+    if source == "PriceCharting":
+        score += 8
+    elif source == "Base interne":
+        score += 2
 
     if swiss_range:
         low, high = swiss_range
 
         if main_chf > high:
-            score += 12
+            score += 10
         elif low <= main_chf <= high:
-            score += 7
+            score += 6
         elif main_chf < low:
-            score += 5
+            score += 4
 
     return max(0, min(100, score))
+
+
+def build_internal_reference(config: dict) -> dict | None:
+    fallback_chf = config.get("fallback_international_chf")
+    if fallback_chf is None:
+        return None
+
+    main_chf = float(fallback_chf)
+    main_usd = round(main_chf / USD_TO_CHF, 2) if USD_TO_CHF else 0
+
+    return {
+        "catalog_name": config["name"],
+        "query": config["query"],
+        "product": f"{config['name']} — référence interne de secours",
+        "url": "Base interne Deal Hunter",
+        "prices": [f"≈ {main_chf} CHF"],
+        "main_usd": main_usd,
+        "main_chf": main_chf,
+        "swiss_range": config.get("swiss_range"),
+        "liquidity": "Non mesurée",
+        "sales_count_signal": 0,
+        "availability": f"Base interne de secours — confiance {config.get('fallback_confidence', 'Moyenne')}",
+        "buy_links": [],
+        "reference_source": "Base interne",
+        "confidence": config.get("fallback_confidence", "Moyenne"),
+        "score": compute_reference_score(main_chf, config.get("swiss_range"), "Base interne"),
+    }
 
 
 def pricecharting_search(config: dict) -> list[dict]:
@@ -630,8 +676,6 @@ def pricecharting_search(config: dict) -> list[dict]:
         href = link_el.get("href", "")
         link = href if href.startswith("http") else "https://www.pricecharting.com" + href
 
-        # V6.3 : on garde uniquement les vraies pages produit PriceCharting.
-        # Cela évite les liens TCGPlayer / eBay / affiliate comme référence marché.
         if "pricecharting.com/game/" not in link:
             continue
 
@@ -662,7 +706,9 @@ def pricecharting_search(config: dict) -> list[dict]:
                 "sales_count_signal": 0,
                 "availability": "PriceCharting utilisé comme référence prix uniquement",
                 "buy_links": [],
-                "score": compute_reference_score(main_chf, config.get("swiss_range")),
+                "reference_source": "PriceCharting",
+                "confidence": "Moyenne",
+                "score": compute_reference_score(main_chf, config.get("swiss_range"), "PriceCharting"),
             }
         )
 
@@ -1043,7 +1089,7 @@ def evaluate_offer(offer: dict, ref: dict | None) -> dict:
             "reference": None,
             "direction": "REJECTED",
             "direction_label": "Rejeté",
-            "verdict": "⚠️ Rejeté : aucune référence PriceCharting fiable",
+            "verdict": "⚠️ Rejeté : aucune référence marché",
             "score": 0,
             "profit": 0,
             "roi": 0,
@@ -1105,7 +1151,6 @@ def evaluate_offer(offer: dict, ref: dict | None) -> dict:
     swiss_low, swiss_high = swiss_range
     ref_chf = float(ref["main_chf"])
 
-    # Sécurité : prix trop bas = risque fake ou mauvais produit.
     if price_chf < swiss_low * 0.45:
         return {
             "offer": offer,
@@ -1153,7 +1198,7 @@ def evaluate_offer(offer: dict, ref: dict | None) -> dict:
             score = 70
             verdict = "🟡 Export possible"
         else:
-            score = 35
+            score = 40
             verdict = "⚪ Pas assez de marge export"
             reason = "Marge export insuffisante"
 
@@ -1170,12 +1215,16 @@ def evaluate_offer(offer: dict, ref: dict | None) -> dict:
             score = 70
             verdict = "🟡 Import possible"
         else:
-            score = 30
+            score = 35
             verdict = "⚪ Pas assez de marge import"
             reason = "Vendeur pas confirmé suisse ou marge import insuffisante"
 
     if ref_chf > swiss_high * 1.4 and direction == "EXPORT_CH" and profit > 0:
         score += 5
+
+    if ref.get("reference_source") == "Base interne":
+        score -= 5
+        reason = (reason + " / " if reason else "") + "référence interne de secours"
 
     score = max(0, min(100, score))
 
@@ -1215,6 +1264,15 @@ def main():
             errors.append(f"PriceCharting {config['name']} : {e}")
 
     refs = reference_by_catalog(references)
+
+    internal_refs_added = 0
+    for config in CATALOG:
+        if config["name"] not in refs:
+            fallback = build_internal_reference(config)
+            if fallback:
+                references.append(fallback)
+                refs[config["name"]] = fallback
+                internal_refs_added += 1
 
     offers = []
     source_status = []
@@ -1264,28 +1322,34 @@ def main():
     references = sorted(references, key=lambda x: x["score"], reverse=True)
 
     good_deals = [x for x in evaluated if x["score"] >= DEAL_ALERT_MIN_SCORE]
+    watch_deals = [
+        x for x in evaluated
+        if WATCH_MIN_SCORE <= x["score"] < DEAL_ALERT_MIN_SCORE
+    ]
+
     export_deals = [x for x in good_deals if x["direction"] == "EXPORT_CH"]
     import_deals = [x for x in good_deals if x["direction"] == "IMPORT_TO_CH"]
 
     send_telegram(
-        f"""🔎 DEAL HUNTER AI — UNIVERSAL DEAL ENGINE V6.3 STRICT
+        f"""🔎 DEAL HUNTER AI — UNIVERSAL DEAL ENGINE V6.4
 
 Statut :
-Moteur multi-sources activé avec filtres stricts + rapport des rejets.
+Moteur multi-sources activé avec base marché interne de secours.
 
-Corrections V6.3 :
-Références PriceCharting limitées aux vraies pages /game/.
-Liens TCGPlayer / eBay affiliate exclus comme référence marché.
-Rapport des offres rejetées ajouté.
-Prix suisses avec apostrophe corrigés.
-Google Shopping Suisse n'est pas automatiquement vendeur suisse.
-Sources à risque exclues.
+Améliorations V6.4 :
+Si PriceCharting bloque ou ne trouve rien, le bot utilise une référence interne.
+Les offres ne sont plus rejetées uniquement parce que PriceCharting manque.
+Nouveau bloc "À SURVEILLER" pour les opportunités proches mais pas assez fortes.
+Scoring prudent si la référence vient de la base interne.
 
 Sources :
 {chr(10).join(source_status)}
 
-Références PriceCharting :
+Références marché totales :
 {len(references)}
+
+Références internes ajoutées :
+{internal_refs_added}
 
 Offres achetables détectées :
 {len(offers)}
@@ -1296,8 +1360,11 @@ Offres analysées :
 Offres rejetées :
 {len(rejected)}
 
-Deals au-dessus du seuil :
+Deals solides :
 {len(good_deals)}
+
+À surveiller :
+{len(watch_deals)}
 
 Export Suisse → étranger :
 {len(export_deals)}
@@ -1320,7 +1387,7 @@ Heure :
     )
 
     if errors:
-        send_telegram("⚠️ Erreurs détectées\n\n" + "\n".join(errors[:10]))
+        send_telegram("⚠️ Erreurs PriceCharting\n\n" + "\n".join(errors[:10]))
 
     if good_deals:
         for item in good_deals[:MAX_DEAL_MESSAGES]:
@@ -1330,7 +1397,7 @@ Heure :
             swiss_text = f"{swiss[0]}–{swiss[1]} CHF" if swiss else "Non calibré"
 
             send_telegram(
-                f"""🚨 DEAL HUNTER AI — OFFRE ACHETABLE ANALYSÉE
+                f"""🚨 DEAL HUNTER AI — DEAL SOLIDE
 
 Verdict :
 {item['verdict']}
@@ -1359,14 +1426,14 @@ Pays vendeur détecté :
 Pays recherche :
 {offer.get('search_country')}
 
-Livraison :
-{offer.get('delivery', 'À vérifier')}
-
 Référence marché :
 {ref.get('catalog_name')}
 
-PriceCharting :
-{ref.get('main_usd')} USD ≈ {ref.get('main_chf')} CHF
+Source référence :
+{ref.get('reference_source')}
+
+Prix référence :
+{ref.get('main_chf')} CHF
 
 Marché suisse estimé :
 {swiss_text}
@@ -1377,11 +1444,8 @@ Profit estimé :
 ROI estimé :
 {item['roi']} %
 
-Net export estimé :
-{item['net_export']} CHF
-
-Coût import estimé :
-{item['landed_import']} CHF
+Raison :
+{item.get('reason') or 'Critères atteints'}
 
 Lien offre :
 {offer.get('url')}
@@ -1395,8 +1459,33 @@ Vérifier disponibilité, état scellé, langue, vendeur réel et frais de port 
             )
     else:
         send_telegram(
-            "⚪ Aucun vrai deal assez solide détecté avec les filtres stricts V6.3. "
-            "C'est normal : cette version préfère éviter les faux positifs."
+            "⚪ Aucun deal solide détecté. Le bot passe les meilleures pistes dans le bloc À SURVEILLER."
+        )
+
+    if watch_deals:
+        lines = []
+        for item in watch_deals[:MAX_WATCH_MESSAGES]:
+            offer = item["offer"]
+            ref = item["reference"]
+            lines.append(
+                f"""— {offer.get('title')}
+Score : {item['score']}/100
+Verdict : {item['verdict']}
+Prix : {offer.get('price_chf')} CHF
+Source : {offer.get('source')}
+Pays vendeur : {offer.get('seller_country')}
+Référence : {ref.get('catalog_name')}
+Source référence : {ref.get('reference_source')}
+Profit estimé : {item['profit']} CHF
+ROI : {item['roi']} %
+Raison : {item.get('reason') or 'À vérifier'}
+Lien : {offer.get('url')}
+"""
+            )
+
+        send_telegram(
+            "🟡 DEAL HUNTER AI — À SURVEILLER MAIS PAS ACHAT AUTOMATIQUE\n\n"
+            + "\n".join(lines)
         )
 
     if rejected:
@@ -1427,14 +1516,21 @@ Raison : {item.get('reason') or item.get('verdict')}
 Produit :
 {ref.get('catalog_name')}
 
+Source référence :
+{ref.get('reference_source')}
+
+Confiance :
+{ref.get('confidence')}
+
 Score référence :
 {ref.get('score')}/100
 
-Produit PriceCharting :
+Produit référence :
 {ref.get('product')}
 
-Prix international :
-{ref.get('main_usd')} USD ≈ {ref.get('main_chf')} CHF
+Prix référence :
+{ref.get('main_chf')} CHF
+≈ {ref.get('main_usd')} USD
 
 Marché suisse estimé :
 {swiss_text}
@@ -1442,7 +1538,7 @@ Marché suisse estimé :
 Lecture :
 {reference_market_note(ref)}
 
-Disponibilité PriceCharting :
+Disponibilité :
 {ref.get('availability')}
 
 Lien référence :
