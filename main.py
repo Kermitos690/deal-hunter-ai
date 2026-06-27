@@ -1,7 +1,6 @@
 import os
-import re
 import requests
-from bs4 import BeautifulSoup
+import xml.etree.ElementTree as ET
 from datetime import datetime
 
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
@@ -11,60 +10,47 @@ def send(msg):
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
     requests.post(url, json={"chat_id": TELEGRAM_CHAT_ID, "text": msg[:3900]}, timeout=20)
 
-def main():
-    url = "https://order.mandarake.co.jp/order/listPage/list"
-    params = {"keyword": "pokemon", "lang": "en"}
+url = "https://order.mandarake.co.jp/rss/"
 
-    r = requests.get(
-        url,
-        params=params,
-        headers={"User-Agent": "Mozilla/5.0"},
-        timeout=30
-    )
+r = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=30)
 
-    html = r.text
-    soup = BeautifulSoup(html, "html.parser")
+items = []
+root = ET.fromstring(r.text)
 
-    title = soup.title.get_text(strip=True) if soup.title else "Aucun title"
+for item in root.findall(".//item")[:20]:
+    title = item.findtext("title") or ""
+    link = item.findtext("link") or ""
+    desc = item.findtext("description") or ""
 
-    scripts = []
-    for s in soup.find_all("script"):
-        src = s.get("src", "")
-        if src:
-            scripts.append(src)
+    text = f"{title} {desc}".lower()
 
-    possible_endpoints = sorted(set(re.findall(r'https?://[^"\']+|/[A-Za-z0-9_\-/]+(?:api|json|search|list|item|product)[^"\']*', html)))
+    if "pokemon" in text or "ポケモン" in text or "pocket monster" in text:
+        items.append((title, link, desc[:300]))
 
-    send(f"""🔧 DEBUG MANDARAKE PROFOND
-
-Heure :
-{datetime.utcnow().isoformat()} UTC
+send(f"""🔎 MANDARAKE RSS TEST
 
 Status :
 {r.status_code}
 
-Taille HTML :
-{len(html)}
+Taille :
+{len(r.text)}
 
-Titre page :
-{title}
+Produits Pokémon trouvés :
+{len(items)}
 
-Nombre scripts :
-{len(scripts)}
-
-Nombre endpoints possibles :
-{len(possible_endpoints)}
+Heure :
+{datetime.utcnow().isoformat()} UTC
 """)
 
-    send("📄 PREVIEW HTML\n\n" + html[:2500])
+for title, link, desc in items[:10]:
+    send(f"""🧩 MANDARAKE RSS ITEM
 
-    if scripts:
-        send("📜 SCRIPTS TROUVÉS\n\n" + "\n".join(scripts[:30]))
+Titre :
+{title}
 
-    if possible_endpoints:
-        send("🔗 ENDPOINTS POSSIBLES\n\n" + "\n".join(possible_endpoints[:40]))
-    else:
-        send("⚠️ Aucun endpoint évident trouvé dans le HTML.")
+Lien :
+{link}
 
-if __name__ == "__main__":
-    main()
+Description :
+{desc}
+""")
