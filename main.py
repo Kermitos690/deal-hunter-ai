@@ -477,7 +477,7 @@ def build_gsheet_action_url(action, item, include_full_url=False):
     offer = item.get("offer", {})
     deal_id = item.get("deal_id") or make_deal_id(item)
 
-      params = {
+    params = {
         "action": action,
         "token": GSHEET_ACTION_TOKEN,
         "deal_id": deal_id,
