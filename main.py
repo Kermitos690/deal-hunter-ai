@@ -31,6 +31,8 @@ EMAIL_ADDRESS = os.getenv("EMAIL_ADDRESS") or os.getenv("DEAL_EMAIL_ADDRESS")
 EMAIL_APP_PASSWORD = os.getenv("EMAIL_APP_PASSWORD") or os.getenv("DEAL_EMAIL_APP_PASSWORD")
 GSHEET_ACTION_WEBHOOK_URL = os.getenv("GSHEET_ACTION_WEBHOOK_URL")
 GSHEET_ACTION_TOKEN = os.getenv("GSHEET_ACTION_TOKEN")
+TELEGRAM_TARGET_CHAT_IDS = []
+ACTIVE_USERS = []
 
 def env_float(name, default):
     value = os.getenv(name)
@@ -405,29 +407,100 @@ MEDIUM_TRUST_TERMS = [
 # OUTILS
 # =========================
 
-def send_telegram(message: str, reply_markup=None, disable_preview=True):
-    if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
-        print("Telegram secrets missing.")
+def send_telegram(message: str, reply_markup=None, disable_preview=True, chat_id=None):
+    if not TELEGRAM_BOT_TOKEN:
+        print("Telegram bot token missing.")
+        print(message)
+        return
+
+    if chat_id:
+        targets = [str(chat_id)]
+    elif TELEGRAM_TARGET_CHAT_IDS:
+        targets = TELEGRAM_TARGET_CHAT_IDS
+    elif TELEGRAM_CHAT_ID:
+        targets = [str(TELEGRAM_CHAT_ID)]
+    else:
+        print("Telegram chat id missing.")
         print(message)
         return
 
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
-    payload = {
-        "chat_id": TELEGRAM_CHAT_ID,
-        "text": message[:3900],
-        "disable_web_page_preview": disable_preview,
-    }
 
-    if reply_markup:
-        payload["reply_markup"] = reply_markup
+    for target in targets:
+        payload = {
+            "chat_id": target,
+            "text": message[:3900],
+            "disable_web_page_preview": disable_preview,
+        }
+
+        if reply_markup:
+            payload["reply_markup"] = reply_markup
+
+        try:
+            r = requests.post(url, json=payload, timeout=20)
+            print("Telegram:", target, r.status_code, r.text[:150])
+        except Exception as e:
+            print("Telegram error:", target, e)
+
+
+def get_active_users_from_sheet():
+    if not GSHEET_ACTION_WEBHOOK_URL or not GSHEET_ACTION_TOKEN:
+        return []
 
     try:
-        r = requests.post(url, json=payload, timeout=20)
-        print("Telegram:", r.status_code, r.text[:150])
+        r = requests.get(
+            GSHEET_ACTION_WEBHOOK_URL,
+            params={
+                "action": "GET_USERS",
+                "token": GSHEET_ACTION_TOKEN,
+            },
+            timeout=25,
+        )
+
+        data = r.json()
+        users = data.get("users", []) or []
+
+        active_users = []
+
+        for user in users:
+            status = str(user.get("status") or "").upper().strip()
+            chat_id = str(user.get("telegram_chat_id") or "").strip()
+
+            if status == "ACTIVE" and chat_id:
+                active_users.append(user)
+
+        return active_users
+
     except Exception as e:
-        print("Telegram error:", e)
-        
+        print("GET_USERS error:", e)
+        return []
+
+
+def configure_telegram_targets():
+    global TELEGRAM_TARGET_CHAT_IDS
+    global ACTIVE_USERS
+
+    ACTIVE_USERS = get_active_users_from_sheet()
+
+    chat_ids = []
+
+    for user in ACTIVE_USERS:
+        chat_id = str(user.get("telegram_chat_id") or "").strip()
+
+        if chat_id and chat_id not in chat_ids:
+            chat_ids.append(chat_id)
+
+    if not chat_ids and TELEGRAM_CHAT_ID:
+        chat_ids.append(str(TELEGRAM_CHAT_ID))
+
+    TELEGRAM_TARGET_CHAT_IDS = chat_ids
+
+    print("Active Telegram users:", len(ACTIVE_USERS))
+    print("Telegram target chat ids:", TELEGRAM_TARGET_CHAT_IDS)
+    
 def short_param(value, limit=140):
+    
+    
     text = str(value or "").strip()
     return text[:limit]
 
@@ -1819,6 +1892,7 @@ def proximity_sort_key(item):
 # =========================
 
 def main():
+    configure_telegram_targets()
     references = []
     errors = []
 
@@ -1924,12 +1998,15 @@ def main():
     ]
 
     send_telegram(
-        f"""🔎 DEAL HUNTER AI — UNIVERSAL DEAL ENGINE V8.1
+        f"""🔎 DEAL HUNTER AI — UNIVERSAL DEAL ENGINE V8.3
 
 Statut :
 Moteur multi-sources activé avec preuve de marché et boutons Google Sheets.
 
-Améliorations V8.1 :
+Utilisateurs Telegram actifs :
+{len(TELEGRAM_TARGET_CHAT_IDS)}
+
+Améliorations V8.3 :
 
 Aperçus Telegram désactivés et bouton Recherche exacte ajouté.
 
