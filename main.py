@@ -2220,9 +2220,8 @@ Heure :
             log_deal_to_sheet(item)
             buttons = telegram_action_buttons(item)
 
-send_filtered_telegram(item,
+            send_filtered_telegram(item,
                 f"""🚨 DEAL HUNTER AI — DEAL FLIP SOLIDE CONFIRMÉ
-
 Deal ID :
 {item['deal_id']}
 
