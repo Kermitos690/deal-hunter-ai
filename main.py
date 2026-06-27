@@ -56,8 +56,8 @@ JPY_TO_CHF = env_float("JPY_TO_CHF", 0.0058)
 
 MAX_REFERENCE_MESSAGES = env_int("MAX_REFERENCE_MESSAGES", 8)
 MAX_DEAL_MESSAGES = env_int("MAX_DEAL_MESSAGES", 8)
-MAX_WATCH_MESSAGES = env_int("MAX_WATCH_MESSAGES", 8)
-MAX_REJECTED_MESSAGES = env_int("MAX_REJECTED_MESSAGES", 6)
+MAX_WATCH_MESSAGES = env_int("MAX_WATCH_MESSAGES", 10)
+MAX_REJECTED_MESSAGES = env_int("MAX_REJECTED_MESSAGES", 8)
 
 DEAL_ALERT_MIN_SCORE = env_int("DEAL_ALERT_MIN_SCORE", 75)
 WATCH_MIN_SCORE = env_int("WATCH_MIN_SCORE", 45)
@@ -147,17 +147,7 @@ CATALOG = [
         "query": "pokemon evolving skies booster box",
         "shopping_query": "Pokemon Evolving Skies booster box sealed",
         "required": ["pokemon", "evolving skies", "booster box"],
-        "exclude": [
-            "half booster",
-            "korean",
-            "chinese",
-            "german",
-            "deutsch",
-            "italian",
-            "spanish",
-            "single pack",
-            "proxy",
-        ],
+        "exclude": ["half booster", "korean", "chinese", "german", "deutsch", "italian", "spanish", "single pack", "proxy"],
         "swiss_range": (650, 850),
         "fallback_international_chf": 2200,
         "fallback_confidence": "Moyenne",
@@ -167,18 +157,7 @@ CATALOG = [
         "query": "pokemon japanese scarlet violet 151 booster box",
         "shopping_query": "Pokemon Japanese Scarlet Violet 151 booster box sealed display",
         "required": ["pokemon", "japanese", "151", "booster box"],
-        "exclude": [
-            "chinese",
-            "korean",
-            "surprise",
-            "jumbo",
-            "slim",
-            "volume",
-            "mini tin",
-            "poster",
-            "binder",
-            "single pack",
-        ],
+        "exclude": ["chinese", "korean", "surprise", "jumbo", "slim", "volume", "mini tin", "poster", "binder", "single pack"],
         "swiss_range": (115, 145),
         "fallback_international_chf": 265,
         "fallback_confidence": "Moyenne",
@@ -259,17 +238,7 @@ CATALOG = [
         "query": "one piece carrying on his will booster box",
         "shopping_query": "One Piece Carrying On His Will booster box sealed",
         "required": ["one piece", "carrying on his will", "booster box"],
-        "exclude": [
-            "op-14",
-            "op-12",
-            "azure",
-            "egghead",
-            "legacy",
-            "korean",
-            "chinese",
-            "proxy",
-            "single pack",
-        ],
+        "exclude": ["op-14", "op-12", "azure", "egghead", "legacy", "korean", "chinese", "proxy", "single pack"],
         "swiss_range": (90, 150),
         "fallback_international_chf": 445,
         "fallback_confidence": "Moyenne",
@@ -307,7 +276,6 @@ GLOBAL_EXCLUDE = [
     "time warp",
 ]
 
-
 BAD_SOURCE_TERMS = [
     "aliexpress",
     "temu",
@@ -319,6 +287,29 @@ BAD_SOURCE_TERMS = [
     "unbranded",
 ]
 
+BAD_BOOSTER_BOX_TYPE_TERMS = [
+    "special set",
+    "vmax special",
+    "gym set",
+    "premium collection",
+    "collection box",
+    "elite trainer",
+    " etb",
+    "bundle",
+    "mini tin",
+    " tin",
+    "single pack",
+    "loose pack",
+    "pack lot",
+    "packs lot",
+    "lot of",
+    "sealed case",
+    "case of",
+    "display case",
+    "acrylic case",
+    "deck",
+    "starter deck",
+]
 
 SWISS_SOURCE_HINTS = [
     "ricardo.ch",
@@ -389,8 +380,8 @@ def normalize(text: str) -> str:
         "japan": "japanese",
         "boite": "box",
         "boîte": "box",
-        "display": "booster box",
-        "booster display": "booster box",
+        "display": "booster display",
+        "booster display": "booster display",
         "hobby display": "hobby box",
     }
 
@@ -402,20 +393,30 @@ def normalize(text: str) -> str:
     return low
 
 
+def is_booster_box_config(config: dict) -> bool:
+    return any(normalize(x) == "booster box" for x in config.get("required", []))
+
+
+def is_wrong_booster_box_type(text: str) -> bool:
+    low = " " + normalize(text) + " "
+    return any(term in low for term in BAD_BOOSTER_BOX_TYPE_TERMS)
+
+
 def keyword_present(text: str, keyword: str) -> bool:
     low = normalize(text)
     key = normalize(keyword)
 
     if key == "booster box":
+        # V6.5 : le simple mot "box" ne suffit plus.
         return any(
             x in low
             for x in [
                 "booster box",
-                "box booster",
                 "booster display",
+                "display box",
+                "sealed display",
+                "booster display box",
                 "display booster",
-                "display",
-                "box",
             ]
         )
 
@@ -447,8 +448,27 @@ def is_bad_source(source: str, url: str, title: str = "") -> bool:
     return any(term in blob for term in BAD_SOURCE_TERMS)
 
 
+def related_to_catalog_without_box(text: str, config: dict) -> bool:
+    required = [
+        word for word in config.get("required", [])
+        if normalize(word) not in ["booster box", "hobby box"]
+    ]
+
+    if required and not contains_all(text, required):
+        return False
+
+    any_of = config.get("any_of")
+    if any_of and not contains_any(text, any_of):
+        return False
+
+    return True
+
+
 def matches_catalog(text: str, config: dict) -> bool:
     if is_excluded(text, config.get("exclude", [])):
+        return False
+
+    if is_booster_box_config(config) and is_wrong_booster_box_type(text):
         return False
 
     if not contains_all(text, config["required"]):
@@ -754,7 +774,18 @@ def serpapi_google_shopping_offers(config: dict) -> list[dict]:
 
             for item in shopping_results[:10]:
                 title = item.get("title", "")
-                if not title or not matches_catalog(title, config):
+                if not title:
+                    continue
+
+                related = related_to_catalog_without_box(title, config)
+                if not related:
+                    continue
+
+                forced_reject_reason = None
+
+                if is_booster_box_config(config) and is_wrong_booster_box_type(title):
+                    forced_reject_reason = "Mauvais type de produit : Special Set / collection / lot / case ≠ vraie booster box"
+                elif not matches_catalog(title, config):
                     continue
 
                 link = item.get("link") or item.get("product_link") or item.get("serpapi_product_api") or ""
@@ -764,7 +795,7 @@ def serpapi_google_shopping_offers(config: dict) -> list[dict]:
                     continue
 
                 if is_bad_source(source, link, title):
-                    continue
+                    forced_reject_reason = "Source à risque exclue"
 
                 price_text = item.get("price") or ""
                 extracted = item.get("extracted_price")
@@ -797,6 +828,7 @@ def serpapi_google_shopping_offers(config: dict) -> list[dict]:
                         "delivery": delivery,
                         "catalog_name": config["name"],
                         "is_active": True,
+                        "forced_reject_reason": forced_reject_reason,
                     }
                 )
 
@@ -915,6 +947,7 @@ def ebay_search_offers(config: dict, token: str | None) -> list[dict]:
                         "delivery": "À vérifier sur eBay",
                         "catalog_name": config["name"],
                         "is_active": True,
+                        "forced_reject_reason": None,
                     }
                 )
 
@@ -1028,6 +1061,7 @@ def email_alert_offers() -> list[dict]:
                             "delivery": "Depuis email d'alerte",
                             "catalog_name": config["name"],
                             "is_active": True,
+                            "forced_reject_reason": None,
                         }
                     )
                     break
@@ -1082,89 +1116,51 @@ def reference_market_note(ref: dict) -> str:
     return "International cohérent avec la base suisse"
 
 
+def reject_result(offer, ref, reason):
+    return {
+        "offer": offer,
+        "reference": ref,
+        "direction": "REJECTED",
+        "direction_label": "Rejeté",
+        "verdict": f"⚠️ Rejeté : {reason}",
+        "score": 0,
+        "profit": 0,
+        "roi": 0,
+        "net_export": 0,
+        "landed_import": 0,
+        "reason": reason,
+    }
+
+
 def evaluate_offer(offer: dict, ref: dict | None) -> dict:
+    if offer.get("forced_reject_reason"):
+        return reject_result(offer, ref, offer.get("forced_reject_reason"))
+
     if not ref:
-        return {
-            "offer": offer,
-            "reference": None,
-            "direction": "REJECTED",
-            "direction_label": "Rejeté",
-            "verdict": "⚠️ Rejeté : aucune référence marché",
-            "score": 0,
-            "profit": 0,
-            "roi": 0,
-            "net_export": 0,
-            "landed_import": 0,
-            "reason": "Aucune référence marché exploitable",
-        }
+        return reject_result(offer, None, "Aucune référence marché exploitable")
 
     title = offer.get("title", "")
     price_chf = float(offer.get("price_chf") or 0)
     seller_country = str(offer.get("seller_country") or "UNKNOWN").upper()
 
     if price_chf <= 0:
-        return {
-            "offer": offer,
-            "reference": ref,
-            "direction": "REJECTED",
-            "direction_label": "Rejeté",
-            "verdict": "⚠️ Rejeté : prix invalide",
-            "score": 0,
-            "profit": 0,
-            "roi": 0,
-            "net_export": 0,
-            "landed_import": 0,
-            "reason": "Prix invalide",
-        }
+        return reject_result(offer, ref, "Prix invalide")
 
     if is_bad_source(offer.get("source", ""), offer.get("url", ""), title):
-        return {
-            "offer": offer,
-            "reference": ref,
-            "direction": "REJECTED",
-            "direction_label": "Rejeté",
-            "verdict": "⚠️ Rejeté : source à risque",
-            "score": 0,
-            "profit": 0,
-            "roi": 0,
-            "net_export": 0,
-            "landed_import": 0,
-            "reason": "Source exclue",
-        }
+        return reject_result(offer, ref, "Source exclue")
+
+    if is_wrong_booster_box_type(title):
+        return reject_result(offer, ref, "Mauvais type de produit : Special Set / collection / lot / case ≠ vraie booster box")
 
     swiss_range = ref.get("swiss_range")
     if not swiss_range:
-        return {
-            "offer": offer,
-            "reference": ref,
-            "direction": "REJECTED",
-            "direction_label": "Rejeté",
-            "verdict": "⚠️ Rejeté : marché suisse non calibré",
-            "score": 0,
-            "profit": 0,
-            "roi": 0,
-            "net_export": 0,
-            "landed_import": 0,
-            "reason": "Pas de fourchette suisse",
-        }
+        return reject_result(offer, ref, "Pas de fourchette suisse")
 
     swiss_low, swiss_high = swiss_range
     ref_chf = float(ref["main_chf"])
 
     if price_chf < swiss_low * 0.45:
-        return {
-            "offer": offer,
-            "reference": ref,
-            "direction": "REJECTED",
-            "direction_label": "Rejeté",
-            "verdict": "⚠️ Rejeté : prix trop bas / risque fake / mauvais produit",
-            "score": 0,
-            "profit": 0,
-            "roi": 0,
-            "net_export": 0,
-            "landed_import": 0,
-            "reason": "Prix inférieur au seuil réaliste",
-        }
+        return reject_result(offer, ref, "Prix inférieur au seuil réaliste / risque fake")
 
     net_export = round(ref_chf * (1 - SELLING_FEE_RATE) - EXPORT_SHIPPING_BUFFER_CHF, 2)
     profit_export = round(net_export - price_chf, 2)
@@ -1222,9 +1218,17 @@ def evaluate_offer(offer: dict, ref: dict | None) -> dict:
     if ref_chf > swiss_high * 1.4 and direction == "EXPORT_CH" and profit > 0:
         score += 5
 
+    # V6.5 : référence interne + vendeur non confirmé = jamais deal solide.
     if ref.get("reference_source") == "Base interne":
-        score -= 5
         reason = (reason + " / " if reason else "") + "référence interne de secours"
+
+        if seller_country in ["EBAY_UNKNOWN", "UNKNOWN", "INTERNATIONAL"] and score > 60:
+            score = 60
+            verdict = "🟡 À vérifier seulement : référence interne + vendeur non confirmé"
+
+        elif seller_country == "CH" and score > 70:
+            score = 70
+            verdict = "🟡 À vérifier : référence interne, pas encore deal solide"
 
     score = max(0, min(100, score))
 
@@ -1331,16 +1335,17 @@ def main():
     import_deals = [x for x in good_deals if x["direction"] == "IMPORT_TO_CH"]
 
     send_telegram(
-        f"""🔎 DEAL HUNTER AI — UNIVERSAL DEAL ENGINE V6.4
+        f"""🔎 DEAL HUNTER AI — UNIVERSAL DEAL ENGINE V6.5
 
 Statut :
-Moteur multi-sources activé avec base marché interne de secours.
+Moteur multi-sources activé avec filtre strict vraie booster box.
 
-Améliorations V6.4 :
-Si PriceCharting bloque ou ne trouve rien, le bot utilise une référence interne.
-Les offres ne sont plus rejetées uniquement parce que PriceCharting manque.
-Nouveau bloc "À SURVEILLER" pour les opportunités proches mais pas assez fortes.
-Scoring prudent si la référence vient de la base interne.
+Améliorations V6.5 :
+Le simple mot "box" ne suffit plus.
+Il faut booster box / booster display / display box.
+Special Set / VMAX Special / collection / lot / case sont rejetés.
+Référence interne + vendeur eBay/unknown ne peut plus devenir deal solide.
+Les offres douteuses passent au mieux en À SURVEILLER.
 
 Sources :
 {chr(10).join(source_status)}
@@ -1459,7 +1464,7 @@ Vérifier disponibilité, état scellé, langue, vendeur réel et frais de port 
             )
     else:
         send_telegram(
-            "⚪ Aucun deal solide détecté. Le bot passe les meilleures pistes dans le bloc À SURVEILLER."
+            "⚪ Aucun deal solide détecté. Les meilleures pistes passent dans le bloc À SURVEILLER."
         )
 
     if watch_deals:
