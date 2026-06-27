@@ -56,6 +56,8 @@ JPY_TO_CHF = env_float("JPY_TO_CHF", 0.0058)
 
 MAX_REFERENCE_MESSAGES = env_int("MAX_REFERENCE_MESSAGES", 6)
 MAX_DEAL_MESSAGES = env_int("MAX_DEAL_MESSAGES", 8)
+MAX_REJECTED_MESSAGES = env_int("MAX_REJECTED_MESSAGES", 8)
+
 DEAL_ALERT_MIN_SCORE = env_int("DEAL_ALERT_MIN_SCORE", 75)
 
 SELLING_FEE_RATE = env_float("SELLING_FEE_RATE", 0.13)
@@ -82,12 +84,54 @@ else:
 
 
 SHOPPING_COUNTRY_CONFIG = {
-    "ch": {"gl": "ch", "hl": "fr", "google_domain": "google.ch", "location": "Switzerland", "search_country": "CH", "default_currency": "CHF"},
-    "fr": {"gl": "fr", "hl": "fr", "google_domain": "google.fr", "location": "France", "search_country": "FR", "default_currency": "EUR"},
-    "de": {"gl": "de", "hl": "de", "google_domain": "google.de", "location": "Germany", "search_country": "DE", "default_currency": "EUR"},
-    "uk": {"gl": "uk", "hl": "en", "google_domain": "google.co.uk", "location": "United Kingdom", "search_country": "GB", "default_currency": "GBP"},
-    "gb": {"gl": "uk", "hl": "en", "google_domain": "google.co.uk", "location": "United Kingdom", "search_country": "GB", "default_currency": "GBP"},
-    "us": {"gl": "us", "hl": "en", "google_domain": "google.com", "location": "United States", "search_country": "US", "default_currency": "USD"},
+    "ch": {
+        "gl": "ch",
+        "hl": "fr",
+        "google_domain": "google.ch",
+        "location": "Switzerland",
+        "search_country": "CH",
+        "default_currency": "CHF",
+    },
+    "fr": {
+        "gl": "fr",
+        "hl": "fr",
+        "google_domain": "google.fr",
+        "location": "France",
+        "search_country": "FR",
+        "default_currency": "EUR",
+    },
+    "de": {
+        "gl": "de",
+        "hl": "de",
+        "google_domain": "google.de",
+        "location": "Germany",
+        "search_country": "DE",
+        "default_currency": "EUR",
+    },
+    "uk": {
+        "gl": "uk",
+        "hl": "en",
+        "google_domain": "google.co.uk",
+        "location": "United Kingdom",
+        "search_country": "GB",
+        "default_currency": "GBP",
+    },
+    "gb": {
+        "gl": "uk",
+        "hl": "en",
+        "google_domain": "google.co.uk",
+        "location": "United Kingdom",
+        "search_country": "GB",
+        "default_currency": "GBP",
+    },
+    "us": {
+        "gl": "us",
+        "hl": "en",
+        "google_domain": "google.com",
+        "location": "United States",
+        "search_country": "US",
+        "default_currency": "USD",
+    },
 }
 
 
@@ -101,7 +145,17 @@ CATALOG = [
         "query": "pokemon evolving skies booster box",
         "shopping_query": "Pokemon Evolving Skies booster box sealed",
         "required": ["pokemon", "evolving skies", "booster box"],
-        "exclude": ["half booster", "korean", "chinese", "german", "deutsch", "italian", "spanish", "single pack", "proxy"],
+        "exclude": [
+            "half booster",
+            "korean",
+            "chinese",
+            "german",
+            "deutsch",
+            "italian",
+            "spanish",
+            "single pack",
+            "proxy",
+        ],
         "swiss_range": (650, 850),
     },
     {
@@ -109,7 +163,18 @@ CATALOG = [
         "query": "pokemon japanese scarlet violet 151 booster box",
         "shopping_query": "Pokemon Japanese Scarlet Violet 151 booster box sealed display",
         "required": ["pokemon", "japanese", "151", "booster box"],
-        "exclude": ["chinese", "korean", "surprise", "jumbo", "slim", "volume", "mini tin", "poster", "binder", "single pack"],
+        "exclude": [
+            "chinese",
+            "korean",
+            "surprise",
+            "jumbo",
+            "slim",
+            "volume",
+            "mini tin",
+            "poster",
+            "binder",
+            "single pack",
+        ],
         "swiss_range": (115, 145),
     },
     {
@@ -174,7 +239,17 @@ CATALOG = [
         "query": "one piece carrying on his will booster box",
         "shopping_query": "One Piece Carrying On His Will booster box sealed",
         "required": ["one piece", "carrying on his will", "booster box"],
-        "exclude": ["op-14", "op-12", "azure", "egghead", "legacy", "korean", "chinese", "proxy", "single pack"],
+        "exclude": [
+            "op-14",
+            "op-12",
+            "azure",
+            "egghead",
+            "legacy",
+            "korean",
+            "chinese",
+            "proxy",
+            "single pack",
+        ],
         "swiss_range": (90, 150),
     },
     {
@@ -189,16 +264,35 @@ CATALOG = [
 
 
 GLOBAL_EXCLUDE = [
-    "thai", "indonesian", "portuguese",
-    "proxy", "fake", "custom", "orica", "repack", "digital", "empty", "wrapper",
-    "playmat", "sleeves", "deck box",
-    "pricecharting-pro", "subscribe", "time warp",
+    "thai",
+    "indonesian",
+    "portuguese",
+    "proxy",
+    "fake",
+    "custom",
+    "orica",
+    "repack",
+    "digital",
+    "empty",
+    "wrapper",
+    "playmat",
+    "sleeves",
+    "deck box",
+    "pricecharting-pro",
+    "subscribe",
+    "time warp",
 ]
 
 
 BAD_SOURCE_TERMS = [
-    "aliexpress", "temu", "wish", "dhgate", "alibaba",
-    "made in china", "replica", "unbranded",
+    "aliexpress",
+    "temu",
+    "wish",
+    "dhgate",
+    "alibaba",
+    "made in china",
+    "replica",
+    "unbranded",
 ]
 
 
@@ -248,11 +342,19 @@ def normalize(text: str) -> str:
     low = str(text or "").lower()
     replacements = {
         "&": " and ",
-        "é": "e", "è": "e", "ê": "e", "ë": "e",
-        "à": "a", "â": "a",
-        "î": "i", "ï": "i",
-        "ô": "o", "ö": "o",
-        "ù": "u", "û": "u", "ü": "u",
+        "é": "e",
+        "è": "e",
+        "ê": "e",
+        "ë": "e",
+        "à": "a",
+        "â": "a",
+        "î": "i",
+        "ï": "i",
+        "ô": "o",
+        "ö": "o",
+        "ù": "u",
+        "û": "u",
+        "ü": "u",
         "ç": "c",
         "japonais": "japanese",
         "japonaise": "japanese",
@@ -267,8 +369,10 @@ def normalize(text: str) -> str:
         "booster display": "booster box",
         "hobby display": "hobby box",
     }
+
     for a, b in replacements.items():
         low = low.replace(a, b)
+
     low = re.sub(r"[^a-z0-9$€£¥.%,:/?=&+\-’' ]+", " ", low)
     low = re.sub(r"\s+", " ", low).strip()
     return low
@@ -279,7 +383,17 @@ def keyword_present(text: str, keyword: str) -> bool:
     key = normalize(keyword)
 
     if key == "booster box":
-        return any(x in low for x in ["booster box", "box booster", "booster display", "display booster", "display", "box"])
+        return any(
+            x in low
+            for x in [
+                "booster box",
+                "box booster",
+                "booster display",
+                "display booster",
+                "display",
+                "box",
+            ]
+        )
 
     if key == "hobby box":
         return any(x in low for x in ["hobby box", "hobby display", "box hobby"])
@@ -312,11 +426,14 @@ def is_bad_source(source: str, url: str, title: str = "") -> bool:
 def matches_catalog(text: str, config: dict) -> bool:
     if is_excluded(text, config.get("exclude", [])):
         return False
+
     if not contains_all(text, config["required"]):
         return False
+
     any_of = config.get("any_of")
     if any_of and not contains_any(text, any_of):
         return False
+
     return True
 
 
@@ -325,13 +442,14 @@ def clean_number(raw: str) -> float:
     raw = raw.replace("’", "'")
     raw = raw.replace(" ", "")
 
-    # Swiss thousands format : 2'458.00
+    # Format suisse : 2'458.00
     raw = raw.replace("'", "")
 
-    # 2,458.00 => 2458.00
+    # Format US : 2,458.00
     if "," in raw and "." in raw:
         raw = raw.replace(",", "")
-    # 2458,00 => 2458.00
+
+    # Format européen : 2458,00
     elif "," in raw and "." not in raw:
         if len(raw.split(",")[-1]) == 2:
             raw = raw.replace(",", ".")
@@ -346,12 +464,16 @@ def currency_to_chf(amount: float, currency: str) -> float | None:
 
     if cur in ["CHF", "SFR", "FR", "FR."]:
         return round(amount, 2)
+
     if cur in ["USD", "$"]:
         return round(amount * USD_TO_CHF, 2)
+
     if cur in ["EUR", "€"]:
         return round(amount * EUR_TO_CHF, 2)
+
     if cur in ["GBP", "£"]:
         return round(amount * GBP_TO_CHF, 2)
+
     if cur in ["JPY", "¥"]:
         return round(amount * JPY_TO_CHF, 2)
 
@@ -375,6 +497,7 @@ def parse_price_to_chf(price_text: str | None, extracted_price=None, currency_hi
         m = re.search(pattern, text, flags=re.I)
         if not m:
             continue
+
         try:
             amount = clean_number(m.group(1))
             chf = currency_to_chf(amount, cur)
@@ -445,7 +568,7 @@ def detect_seller_country(source: str, url: str) -> str:
     if any(term in blob for term in SWISS_SOURCE_HINTS):
         return "CH"
 
-    # Attention : google.ch veut seulement dire recherche depuis Google Suisse, pas vendeur suisse.
+    # Important : google.ch ne veut pas dire que le vendeur est suisse.
     if ".ch" in blob and "google.ch" not in blob:
         return "CH"
 
@@ -467,6 +590,7 @@ def compute_reference_score(main_chf: float, swiss_range: tuple[int, int] | None
 
     if swiss_range:
         low, high = swiss_range
+
         if main_chf > high:
             score += 12
         elif low <= main_chf <= high:
@@ -485,6 +609,7 @@ def pricecharting_search(config: dict) -> list[dict]:
 
     if r.status_code == 429:
         raise Exception("PriceCharting status 429 / trop de requêtes")
+
     if r.status_code != 200:
         raise Exception(f"PriceCharting status {r.status_code}")
 
@@ -504,6 +629,11 @@ def pricecharting_search(config: dict) -> list[dict]:
 
         href = link_el.get("href", "")
         link = href if href.startswith("http") else "https://www.pricecharting.com" + href
+
+        # V6.3 : on garde uniquement les vraies pages produit PriceCharting.
+        # Cela évite les liens TCGPlayer / eBay / affiliate comme référence marché.
+        if "pricecharting.com/game/" not in link:
+            continue
 
         if link in seen_links:
             continue
@@ -906,28 +1036,76 @@ def reference_market_note(ref: dict) -> str:
     return "International cohérent avec la base suisse"
 
 
-def evaluate_offer(offer: dict, ref: dict | None) -> dict | None:
+def evaluate_offer(offer: dict, ref: dict | None) -> dict:
     if not ref:
-        return None
+        return {
+            "offer": offer,
+            "reference": None,
+            "direction": "REJECTED",
+            "direction_label": "Rejeté",
+            "verdict": "⚠️ Rejeté : aucune référence PriceCharting fiable",
+            "score": 0,
+            "profit": 0,
+            "roi": 0,
+            "net_export": 0,
+            "landed_import": 0,
+            "reason": "Aucune référence marché exploitable",
+        }
 
     title = offer.get("title", "")
     price_chf = float(offer.get("price_chf") or 0)
     seller_country = str(offer.get("seller_country") or "UNKNOWN").upper()
 
     if price_chf <= 0:
-        return None
+        return {
+            "offer": offer,
+            "reference": ref,
+            "direction": "REJECTED",
+            "direction_label": "Rejeté",
+            "verdict": "⚠️ Rejeté : prix invalide",
+            "score": 0,
+            "profit": 0,
+            "roi": 0,
+            "net_export": 0,
+            "landed_import": 0,
+            "reason": "Prix invalide",
+        }
 
     if is_bad_source(offer.get("source", ""), offer.get("url", ""), title):
-        return None
+        return {
+            "offer": offer,
+            "reference": ref,
+            "direction": "REJECTED",
+            "direction_label": "Rejeté",
+            "verdict": "⚠️ Rejeté : source à risque",
+            "score": 0,
+            "profit": 0,
+            "roi": 0,
+            "net_export": 0,
+            "landed_import": 0,
+            "reason": "Source exclue",
+        }
 
     swiss_range = ref.get("swiss_range")
     if not swiss_range:
-        return None
+        return {
+            "offer": offer,
+            "reference": ref,
+            "direction": "REJECTED",
+            "direction_label": "Rejeté",
+            "verdict": "⚠️ Rejeté : marché suisse non calibré",
+            "score": 0,
+            "profit": 0,
+            "roi": 0,
+            "net_export": 0,
+            "landed_import": 0,
+            "reason": "Pas de fourchette suisse",
+        }
 
     swiss_low, swiss_high = swiss_range
     ref_chf = float(ref["main_chf"])
 
-    # Sécurité : prix absurde trop bas pour un produit scellé connu.
+    # Sécurité : prix trop bas = risque fake ou mauvais produit.
     if price_chf < swiss_low * 0.45:
         return {
             "offer": offer,
@@ -957,6 +1135,7 @@ def evaluate_offer(offer: dict, ref: dict | None) -> dict | None:
     verdict = "⚪ Pas assez intéressant"
     profit = 0
     roi = 0
+    reason = ""
 
     if seller_country == "CH":
         direction = "EXPORT_CH"
@@ -976,6 +1155,7 @@ def evaluate_offer(offer: dict, ref: dict | None) -> dict | None:
         else:
             score = 35
             verdict = "⚪ Pas assez de marge export"
+            reason = "Marge export insuffisante"
 
     else:
         direction = "IMPORT_TO_CH"
@@ -992,8 +1172,8 @@ def evaluate_offer(offer: dict, ref: dict | None) -> dict | None:
         else:
             score = 30
             verdict = "⚪ Pas assez de marge import"
+            reason = "Vendeur pas confirmé suisse ou marge import insuffisante"
 
-    # Bonus si la référence internationale est nettement au-dessus du marché suisse.
     if ref_chf > swiss_high * 1.4 and direction == "EXPORT_CH" and profit > 0:
         score += 5
 
@@ -1014,7 +1194,7 @@ def evaluate_offer(offer: dict, ref: dict | None) -> dict | None:
         "landed_import": landed_import,
         "profit_import": profit_import,
         "roi_import": roi_import,
-        "reason": "",
+        "reason": reason,
     }
 
 
@@ -1068,15 +1248,19 @@ def main():
     offers = dedupe_offers(offers)
 
     evaluated = []
+    rejected = []
 
     for offer in offers:
         ref = refs.get(offer.get("catalog_name"))
         result = evaluate_offer(offer, ref)
 
-        if result and result["direction"] != "REJECTED":
+        if result["direction"] == "REJECTED":
+            rejected.append(result)
+        else:
             evaluated.append(result)
 
     evaluated = sorted(evaluated, key=lambda x: x["score"], reverse=True)
+    rejected = sorted(rejected, key=lambda x: x["offer"].get("price_chf", 999999))
     references = sorted(references, key=lambda x: x["score"], reverse=True)
 
     good_deals = [x for x in evaluated if x["score"] >= DEAL_ALERT_MIN_SCORE]
@@ -1084,17 +1268,18 @@ def main():
     import_deals = [x for x in good_deals if x["direction"] == "IMPORT_TO_CH"]
 
     send_telegram(
-        f"""🔎 DEAL HUNTER AI — UNIVERSAL DEAL ENGINE V6.2 STRICT
+        f"""🔎 DEAL HUNTER AI — UNIVERSAL DEAL ENGINE V6.3 STRICT
 
 Statut :
-Moteur multi-sources activé avec filtres stricts.
+Moteur multi-sources activé avec filtres stricts + rapport des rejets.
 
-Corrections V6.2 :
+Corrections V6.3 :
+Références PriceCharting limitées aux vraies pages /game/.
+Liens TCGPlayer / eBay affiliate exclus comme référence marché.
+Rapport des offres rejetées ajouté.
 Prix suisses avec apostrophe corrigés.
-Google Shopping Suisse n'est plus considéré automatiquement comme vendeur suisse.
-AliExpress / Temu / Wish / DHGate exclus.
-One Piece et Lorcana comparés seulement par extension exacte.
-Scoring plus strict.
+Google Shopping Suisse n'est pas automatiquement vendeur suisse.
+Sources à risque exclues.
 
 Sources :
 {chr(10).join(source_status)}
@@ -1107,6 +1292,9 @@ Offres achetables détectées :
 
 Offres analysées :
 {len(evaluated)}
+
+Offres rejetées :
+{len(rejected)}
 
 Deals au-dessus du seuil :
 {len(good_deals)}
@@ -1207,8 +1395,26 @@ Vérifier disponibilité, état scellé, langue, vendeur réel et frais de port 
             )
     else:
         send_telegram(
-            "⚪ Aucun vrai deal assez solide détecté avec les filtres stricts V6.2. "
+            "⚪ Aucun vrai deal assez solide détecté avec les filtres stricts V6.3. "
             "C'est normal : cette version préfère éviter les faux positifs."
+        )
+
+    if rejected:
+        lines = []
+        for item in rejected[:MAX_REJECTED_MESSAGES]:
+            offer = item["offer"]
+            lines.append(
+                f"""— {offer.get('title')}
+Prix : {offer.get('price_chf')} CHF
+Source : {offer.get('source')}
+Pays vendeur : {offer.get('seller_country')}
+Raison : {item.get('reason') or item.get('verdict')}
+"""
+            )
+
+        send_telegram(
+            "🧹 DEAL HUNTER AI — OFFRES REJETÉES LES PLUS PROCHES\n\n"
+            + "\n".join(lines)
         )
 
     for ref in references[:MAX_REFERENCE_MESSAGES]:
