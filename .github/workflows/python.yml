@@ -33,7 +33,7 @@ on:
         default: ""
 
   schedule:
-  - cron: "7,22,37,52 * * * *"
+  - cron: "*/15 * * * *"
 
 concurrency:
   group: deal-hunter-ai
