@@ -1618,7 +1618,60 @@ def attach_market_evidence(result):
         )
 
     return result
+def attach_market_evidence(result):
+    ref = result.get("reference")
 
+    if not ref:
+        result["market_evidence"] = None
+        result["evidence_score"] = 0
+        result["evidence_sales_30"] = 0
+        result["evidence_sales_90"] = 0
+        result["evidence_median_text"] = "Aucune"
+        result["evidence_decision"] = "🟠 Aucune preuve marché"
+        result["evidence_action"] = "Aucune référence exploitable"
+        result["score_before_evidence_gate"] = None
+        return result
+
+    evidence = market_evidence.compute_market_evidence(ref.get("catalog_name"))
+
+    median = evidence.get("median_sold_chf")
+    median_text = f"{median} CHF" if median is not None else "Aucune"
+
+    result["market_evidence"] = evidence
+    result["evidence_score"] = evidence.get("evidence_score", 0)
+    result["evidence_sales_30"] = evidence.get("sales_30_count", 0)
+    result["evidence_sales_90"] = evidence.get("sales_90_count", 0)
+    result["evidence_median_text"] = median_text
+    result["evidence_decision"] = evidence.get("evidence_decision")
+    result["evidence_action"] = evidence.get("evidence_action")
+    result["score_before_evidence_gate"] = None
+
+    is_candidate_deal = (
+        result.get("direction") != "REJECTED"
+        and result.get("score", 0) >= DEAL_ALERT_MIN_SCORE
+    )
+
+    evidence_too_weak = (
+        result.get("evidence_score", 0) < MIN_MARKET_EVIDENCE_FOR_SOLID_DEAL
+    )
+
+    if REQUIRE_MARKET_EVIDENCE_FOR_SOLID_DEAL == 1 and is_candidate_deal and evidence_too_weak:
+        result["score_before_evidence_gate"] = result.get("score", 0)
+        result["score"] = min(result.get("score", 0), 70)
+        result["flip_decision"] = "🟡 FLIP À VÉRIFIER"
+        result["verdict"] = "🟡 Prix intéressant mais ventes réelles insuffisantes"
+
+        old_reason = result.get("reason") or ""
+        extra_reason = "preuve marché insuffisante / ventes réelles manquantes"
+        result["reason"] = f"{old_reason} / {extra_reason}" if old_reason else extra_reason
+
+        result["action_recommended"] = (
+            "Prix potentiellement intéressant, mais pas assez de ventes réelles renseignées. "
+            "Ne pas acheter automatiquement. Vérifier eBay sold / Cardmarket / ventes récentes puis ajouter les ventes dans sales_comps.csv."
+        )
+
+    return result
+    
 def proximity_sort_key(item):
     market_score = item.get("market_score", 0)
     seller_score = item.get("seller_confidence_score", 0)
@@ -1710,11 +1763,15 @@ def main():
     rejected = sorted(rejected, key=lambda x: x["offer"].get("price_chf", 999999))
     references = sorted(references, key=lambda x: x["score"], reverse=True)
 
-    good_deals = [
-        x for x in evaluated
-        if x["score"] >= DEAL_ALERT_MIN_SCORE
-        and x["seller_confidence_score"] >= MIN_SELLER_CONFIDENCE_FOR_AUTO_DEAL
-    ]
+good_deals = [
+    x for x in evaluated
+    if x["score"] >= DEAL_ALERT_MIN_SCORE
+    and x["seller_confidence_score"] >= MIN_SELLER_CONFIDENCE_FOR_AUTO_DEAL
+    and (
+        REQUIRE_MARKET_EVIDENCE_FOR_SOLID_DEAL == 0
+        or x.get("evidence_score", 0) >= MIN_MARKET_EVIDENCE_FOR_SOLID_DEAL
+    )
+]
 
     watch_deals = [
         x for x in evaluated
@@ -1730,18 +1787,22 @@ def main():
         if x not in good_deals and x not in watch_deals
     ]
 
-    export_deals = [x for x in good_deals if x["direction"] == "EXPORT_CH"]
+        export_deals = [x for x in good_deals if x["direction"] == "EXPORT_CH"]
     import_deals = [x for x in good_deals if x["direction"] == "IMPORT_TO_CH"]
     market_ok = [x for x in evaluated if x["market_score"] >= MARKET_WATCH_MIN_SCORE]
     low_seller_watch = [x for x in watch_deals if x["seller_confidence_score"] < MIN_SELLER_CONFIDENCE_FOR_AUTO_DEAL]
 
+    evidence_downgraded = [
+        x for x in evaluated
+        if x.get("score_before_evidence_gate") is not None
+    ]
     send_telegram(
-        f"""🔎 DEAL HUNTER AI — UNIVERSAL DEAL ENGINE V6.10
+        f"""🔎 DEAL HUNTER AI — UNIVERSAL DEAL ENGINE V7.2
 
 Statut :
 Moteur multi-sources activé avec confiance vendeur.
 
-Améliorations V6.10 :
+Améliorations V7.2 :
 Score confiance vendeur ajouté.
 Risque vendeur / plateforme ajouté.
 Action recommandée ajoutée.
