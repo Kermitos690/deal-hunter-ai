@@ -210,7 +210,7 @@ def format_rejected(result):
     ref_name = ref.get("catalog_name") if ref else "Aucune référence"
     ref_source = ref.get("reference_source") if ref else "Aucune"
 
-    return f"""⚠️ DEAL HUNTER AI V7.0 — ANALYSE MANUELLE REJETÉE
+    return f"""⚠️ DEAL HUNTER AI V7.1 — ANALYSE MANUELLE REJETÉE
 
 Produit :
 {offer.get("title")}
@@ -248,7 +248,9 @@ def format_analysis(result):
     offer = result["offer"]
     ref = result["reference"]
 
-    return f"""🧮 DEAL HUNTER AI V7.0 — ANALYSE MANUELLE
+    evidence_block = market_evidence.format_evidence_block(ref.get("catalog_name"))
+
+    analysis_block = f"""🧮 DEAL HUNTER AI V7.1 — ANALYSE MANUELLE
 
 Produit reconnu :
 {ref.get("catalog_name")}
@@ -316,6 +318,8 @@ Raison :
 Lien :
 {offer.get("url") or "Aucun lien fourni"}
 """
+
+    return analysis_block + "\n\n" + evidence_block
 
 
 def main():
