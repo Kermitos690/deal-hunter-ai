@@ -12,9 +12,8 @@ def send(msg):
     requests.post(url, json={"chat_id": TELEGRAM_CHAT_ID, "text": msg[:3900]}, timeout=20)
 
 def main():
-    query = "pokemon"
     url = "https://order.mandarake.co.jp/order/listPage/list"
-    params = {"keyword": query, "lang": "en"}
+    params = {"keyword": "pokemon", "lang": "en"}
 
     r = requests.get(
         url,
@@ -26,24 +25,17 @@ def main():
     html = r.text
     soup = BeautifulSoup(html, "html.parser")
 
-    links = []
-    for a in soup.find_all("a"):
-        title = a.get_text(" ", strip=True)
-        href = a.get("href", "")
+    title = soup.title.get_text(strip=True) if soup.title else "Aucun title"
 
-        if not title and not href:
-            continue
+    scripts = []
+    for s in soup.find_all("script"):
+        src = s.get("src", "")
+        if src:
+            scripts.append(src)
 
-        block = a.parent.get_text(" ", strip=True)[:300] if a.parent else title[:300]
+    possible_endpoints = sorted(set(re.findall(r'https?://[^"\']+|/[A-Za-z0-9_\-/]+(?:api|json|search|list|item|product)[^"\']*', html)))
 
-        if "pokemon" in block.lower() or "pocket" in block.lower() or "card" in block.lower():
-            links.append({
-                "title": title[:150],
-                "href": href[:200],
-                "block": block
-            })
-
-    msg = f"""🔧 DEAL HUNTER AI — DEBUG MANDARAKE
+    send(f"""🔧 DEBUG MANDARAKE PROFOND
 
 Heure :
 {datetime.utcnow().isoformat()} UTC
@@ -54,33 +46,25 @@ Status :
 Taille HTML :
 {len(html)}
 
-Nombre de liens candidats :
-{len(links)}
+Titre page :
+{title}
 
-But :
-Identifier la vraie structure HTML Mandarake pour corriger l'extracteur.
-"""
-    send(msg)
+Nombre scripts :
+{len(scripts)}
 
-    if not links:
-        send("⚠️ Aucun lien candidat trouvé dans le HTML Mandarake.")
-        print(html[:3000])
-        return
-
-    for i, item in enumerate(links[:10], start=1):
-        send(f"""🔎 CANDIDAT MANDARAKE #{i}
-
-Titre :
-{item['title']}
-
-Lien :
-{item['href']}
-
-Bloc :
-{item['block']}
+Nombre endpoints possibles :
+{len(possible_endpoints)}
 """)
 
-    print("Debug Mandarake terminé")
+    send("📄 PREVIEW HTML\n\n" + html[:2500])
+
+    if scripts:
+        send("📜 SCRIPTS TROUVÉS\n\n" + "\n".join(scripts[:30]))
+
+    if possible_endpoints:
+        send("🔗 ENDPOINTS POSSIBLES\n\n" + "\n".join(possible_endpoints[:40]))
+    else:
+        send("⚠️ Aucun endpoint évident trouvé dans le HTML.")
 
 if __name__ == "__main__":
     main()
