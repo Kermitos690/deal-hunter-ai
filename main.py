@@ -405,7 +405,7 @@ MEDIUM_TRUST_TERMS = [
 # OUTILS
 # =========================
 
-def send_telegram(message: str):
+def send_telegram(message: str, reply_markup=None):
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
         print("Telegram secrets missing.")
         print(message)
@@ -418,12 +418,100 @@ def send_telegram(message: str):
         "disable_web_page_preview": False,
     }
 
+    if reply_markup:
+        payload["reply_markup"] = reply_markup
+
     try:
         r = requests.post(url, json=payload, timeout=20)
         print("Telegram:", r.status_code, r.text[:150])
     except Exception as e:
         print("Telegram error:", e)
+        
+def short_param(value, limit=140):
+    text = str(value or "").strip()
+    return text[:limit]
 
+
+def make_deal_id(item):
+    offer = item.get("offer", {})
+    raw = "|".join(
+        [
+            str(offer.get("catalog_name", "")),
+            str(offer.get("title", "")),
+            str(offer.get("price_chf", "")),
+            str(offer.get("source", "")),
+            str(offer.get("url", "")),
+        ]
+    )
+    return "dh_" + hashlib.sha1(raw.encode("utf-8")).hexdigest()[:16]
+
+
+def build_gsheet_action_url(action, item, include_full_url=False):
+    if not GSHEET_ACTION_WEBHOOK_URL or not GSHEET_ACTION_TOKEN:
+        return None
+
+    offer = item.get("offer", {})
+    deal_id = item.get("deal_id") or make_deal_id(item)
+
+    params = {
+        "action": action,
+        "token": GSHEET_ACTION_TOKEN,
+        "deal_id": deal_id,
+        "product": short_param(offer.get("title"), 140),
+        "price_chf": short_param(offer.get("price_chf"), 30),
+        "source": short_param(offer.get("source"), 90),
+        "seller_country": short_param(offer.get("seller_country"), 30),
+        "score": short_param(item.get("score"), 10),
+        "market_decision": short_param(item.get("market_decision"), 90),
+        "evidence_score": short_param(item.get("evidence_score"), 10),
+        "notes": "Action depuis Telegram",
+    }
+
+    if include_full_url:
+        params["url"] = offer.get("url", "")
+
+    return GSHEET_ACTION_WEBHOOK_URL + "?" + urlencode(params)
+
+
+def log_deal_to_sheet(item):
+    url = build_gsheet_action_url("LOG_DEAL", item, include_full_url=True)
+
+    if not url:
+        return
+
+    try:
+        r = requests.get(url, timeout=15)
+        print("Google Sheet LOG_DEAL:", r.status_code, r.text[:120])
+    except Exception as e:
+        print("Google Sheet LOG_DEAL error:", e)
+
+
+def telegram_action_buttons(item):
+    if not GSHEET_ACTION_WEBHOOK_URL or not GSHEET_ACTION_TOKEN:
+        return None
+
+    offer = item.get("offer", {})
+    offer_url = offer.get("url")
+
+    buttons = [
+        [
+            {"text": "✅ Acheté", "url": build_gsheet_action_url("BOUGHT", item)},
+            {"text": "👀 À vérifier", "url": build_gsheet_action_url("CHECK", item)},
+        ],
+        [
+            {"text": "❌ Plus dispo", "url": build_gsheet_action_url("UNAVAILABLE", item)},
+            {"text": "🗑️ Ignorer", "url": build_gsheet_action_url("IGNORE", item)},
+        ],
+    ]
+
+    if offer_url:
+        buttons.append(
+            [
+                {"text": "🔗 Ouvrir annonce", "url": offer_url}
+            ]
+        )
+
+    return {"inline_keyboard": buttons}
 
 def normalize(text: str) -> str:
     low = str(text or "").lower()
@@ -1751,10 +1839,10 @@ def main():
     ]
 
     send_telegram(
-        f"""🔎 DEAL HUNTER AI — UNIVERSAL DEAL ENGINE V7.2
+        f"""🔎 DEAL HUNTER AI — UNIVERSAL DEAL ENGINE V8.0
 
 Statut :
-Moteur multi-sources activé avec preuve de marché.
+Moteur multi-sources activé avec preuve de marché et boutons Google Sheets.
 
 Améliorations V7.2 :
 Score confiance vendeur conservé.
