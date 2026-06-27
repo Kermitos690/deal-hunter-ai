@@ -54,7 +54,7 @@ EUR_TO_CHF = env_float("EUR_TO_CHF", 0.96)
 GBP_TO_CHF = env_float("GBP_TO_CHF", 1.13)
 JPY_TO_CHF = env_float("JPY_TO_CHF", 0.0058)
 
-MAX_REFERENCE_MESSAGES = env_int("MAX_REFERENCE_MESSAGES", 8)
+MAX_REFERENCE_MESSAGES = env_int("MAX_REFERENCE_MESSAGES", 3)
 MAX_DEAL_MESSAGES = env_int("MAX_DEAL_MESSAGES", 8)
 MAX_WATCH_MESSAGES = env_int("MAX_WATCH_MESSAGES", 10)
 MAX_NEAR_MISS_MESSAGES = env_int("MAX_NEAR_MISS_MESSAGES", 10)
@@ -1161,7 +1161,54 @@ def reject_result(offer, ref, reason):
         "net_export": 0,
         "landed_import": 0,
         "reason": reason,
+        "target_buy_price": None,
+        "gap_to_target": None,
+        "decision": "⚠️ REJETÉ",
+        "negotiation_advice": "Ne pas acheter",
     }
+
+
+def make_gap_text(gap):
+    if gap is None:
+        return "Non calculable"
+    if gap > 0:
+        return f"{round(gap, 2)} CHF trop cher"
+    if gap < 0:
+        return f"{round(abs(gap), 2)} CHF sous le prix cible"
+    return "Exactement au prix cible"
+
+
+def make_negotiation_advice(offer, target_buy_price):
+    if target_buy_price is None or target_buy_price <= 0:
+        return "Pas de négociation conseillée"
+
+    seller_country = str(offer.get("seller_country") or "").upper()
+    source = normalize(offer.get("source", ""))
+
+    if seller_country == "CH" or "ricardo" in source:
+        low = round(target_buy_price * 0.85, 2)
+        high = round(target_buy_price, 2)
+        return f"Proposer environ {low}–{high} CHF, ne pas dépasser {high} CHF"
+
+    return f"Prix maximum conseillé : {round(target_buy_price, 2)} CHF"
+
+
+def compute_target_prices(direction, ref_chf, swiss_low):
+    net_export = round(ref_chf * (1 - SELLING_FEE_RATE) - EXPORT_SHIPPING_BUFFER_CHF, 2)
+    target_export = round(net_export - MIN_PROFIT_CHF, 2)
+
+    target_import = round(
+        swiss_low - IMPORT_SHIPPING_BUFFER_CHF - IMPORT_DUTY_BUFFER_CHF - MIN_PROFIT_CHF,
+        2,
+    )
+
+    if direction == "EXPORT_CH":
+        return target_export, net_export
+
+    if direction == "IMPORT_TO_CH":
+        return target_import, None
+
+    return None, None
 
 
 def evaluate_offer(offer: dict, ref: dict | None) -> dict:
@@ -1194,61 +1241,57 @@ def evaluate_offer(offer: dict, ref: dict | None) -> dict:
     if price_chf < swiss_low * 0.45:
         return reject_result(offer, ref, "Prix inférieur au seuil réaliste / risque fake")
 
-    net_export = round(ref_chf * (1 - SELLING_FEE_RATE) - EXPORT_SHIPPING_BUFFER_CHF, 2)
-    profit_export = round(net_export - price_chf, 2)
-    roi_export = round((profit_export / price_chf) * 100, 1) if price_chf > 0 else 0
-
-    landed_import = round(price_chf + IMPORT_SHIPPING_BUFFER_CHF + IMPORT_DUTY_BUFFER_CHF, 2)
-    profit_import = round(swiss_low - landed_import, 2)
-    roi_import = round((profit_import / landed_import) * 100, 1) if landed_import > 0 else 0
-
-    score = 0
-    direction = "NONE"
-    direction_label = "Pas d'arbitrage clair"
-    verdict = "⚪ Pas assez intéressant"
-    profit = 0
-    roi = 0
-    reason = ""
-
     if seller_country == "CH":
         direction = "EXPORT_CH"
         direction_label = "Acheter en Suisse → vendre à l'étranger"
-        profit = profit_export
-        roi = roi_export
-
-        if profit_export >= 250 and roi_export >= 35:
-            score = 95
-            verdict = "🔥 Export très intéressant"
-        elif profit_export >= 100 and roi_export >= 25:
-            score = 85
-            verdict = "🟢 Export intéressant"
-        elif profit_export >= MIN_PROFIT_CHF and roi_export >= 15:
-            score = 70
-            verdict = "🟡 Export possible"
-        else:
-            score = 40
-            verdict = "⚪ Pas assez de marge export"
-            reason = "Marge export insuffisante"
-
     else:
         direction = "IMPORT_TO_CH"
         direction_label = "Acheter à l'étranger → vendre en Suisse"
-        profit = profit_import
-        roi = roi_import
 
-        if profit_import >= 100 and roi_import >= 25:
-            score = 85
-            verdict = "🟢 Import intéressant"
-        elif profit_import >= MIN_PROFIT_CHF and roi_import >= 15:
-            score = 70
-            verdict = "🟡 Import possible"
-        else:
-            score = 35
-            verdict = "⚪ Pas assez de marge import"
-            reason = "Vendeur pas confirmé suisse ou marge import insuffisante"
+    target_buy_price, net_export = compute_target_prices(direction, ref_chf, swiss_low)
 
-    if ref_chf > swiss_high * 1.4 and direction == "EXPORT_CH" and profit > 0:
-        score += 5
+    if direction == "EXPORT_CH":
+        net_export = round(ref_chf * (1 - SELLING_FEE_RATE) - EXPORT_SHIPPING_BUFFER_CHF, 2)
+        profit = round(net_export - price_chf, 2)
+        roi = round((profit / price_chf) * 100, 1) if price_chf > 0 else 0
+        landed_import = round(price_chf + IMPORT_SHIPPING_BUFFER_CHF + IMPORT_DUTY_BUFFER_CHF, 2)
+    else:
+        landed_import = round(price_chf + IMPORT_SHIPPING_BUFFER_CHF + IMPORT_DUTY_BUFFER_CHF, 2)
+        profit = round(swiss_low - landed_import, 2)
+        roi = round((profit / landed_import) * 100, 1) if landed_import > 0 else 0
+        net_export = round(ref_chf * (1 - SELLING_FEE_RATE) - EXPORT_SHIPPING_BUFFER_CHF, 2)
+
+    gap_to_target = round(price_chf - target_buy_price, 2) if target_buy_price is not None else None
+
+    score = 0
+    verdict = "⚪ Pas assez intéressant"
+    reason = ""
+
+    if gap_to_target is not None and gap_to_target <= 0 and profit >= MIN_PROFIT_CHF and roi >= 15:
+        score = 80
+        verdict = "🟢 Achat possible selon le prix cible"
+    elif gap_to_target is not None and gap_to_target <= 25 and profit >= 0:
+        score = 60
+        verdict = "🟡 Très proche du prix cible / négocier"
+        reason = "Proche du prix cible"
+    elif gap_to_target is not None and gap_to_target <= 75:
+        score = 50
+        verdict = "🟡 À surveiller si baisse de prix"
+        reason = "Pas assez bas, mais proche"
+    else:
+        score = 35
+        verdict = "🔴 Trop cher"
+        reason = "Prix trop éloigné du prix cible"
+
+    if direction == "EXPORT_CH" and profit < MIN_PROFIT_CHF:
+        reason = "Marge export insuffisante"
+        if score > 40:
+            score = 40
+
+    if direction == "IMPORT_TO_CH" and profit < MIN_PROFIT_CHF:
+        reason = "Marge import insuffisante ou vendeur non confirmé suisse"
+        if score > 40:
+            score = 40
 
     if ref.get("reference_source") == "Base interne":
         reason = (reason + " / " if reason else "") + "référence interne de secours"
@@ -1260,6 +1303,17 @@ def evaluate_offer(offer: dict, ref: dict | None) -> dict:
         elif seller_country == "CH" and score > 70:
             score = 70
             verdict = "🟡 À vérifier : référence interne, pas encore deal solide"
+
+    if gap_to_target is not None and gap_to_target > 0:
+        decision = "🔴 TROP CHER"
+    elif score >= DEAL_ALERT_MIN_SCORE:
+        decision = "🟢 ACHAT POSSIBLE"
+    elif score >= WATCH_MIN_SCORE:
+        decision = "🟡 À SURVEILLER / NÉGOCIER"
+    else:
+        decision = "🔴 TROP CHER"
+
+    negotiation_advice = make_negotiation_advice(offer, target_buy_price)
 
     score = max(0, min(100, score))
 
@@ -1273,13 +1327,27 @@ def evaluate_offer(offer: dict, ref: dict | None) -> dict:
         "profit": profit,
         "roi": roi,
         "net_export": net_export,
-        "profit_export": profit_export,
-        "roi_export": roi_export,
         "landed_import": landed_import,
-        "profit_import": profit_import,
-        "roi_import": roi_import,
         "reason": reason,
+        "target_buy_price": target_buy_price,
+        "gap_to_target": gap_to_target,
+        "gap_text": make_gap_text(gap_to_target),
+        "decision": decision,
+        "negotiation_advice": negotiation_advice,
     }
+
+
+def proximity_sort_key(item):
+    gap = item.get("gap_to_target")
+    score = item.get("score", 0)
+
+    if gap is None:
+        return (999999, -score)
+
+    if gap < 0:
+        return (0, -score)
+
+    return (gap, -score)
 
 
 # =========================
@@ -1352,7 +1420,7 @@ def main():
         else:
             evaluated.append(result)
 
-    evaluated = sorted(evaluated, key=lambda x: x["score"], reverse=True)
+    evaluated = sorted(evaluated, key=proximity_sort_key)
     rejected = sorted(rejected, key=lambda x: x["offer"].get("price_chf", 999999))
     references = sorted(references, key=lambda x: x["score"], reverse=True)
 
@@ -1370,16 +1438,18 @@ def main():
     import_deals = [x for x in good_deals if x["direction"] == "IMPORT_TO_CH"]
 
     send_telegram(
-        f"""🔎 DEAL HUNTER AI — UNIVERSAL DEAL ENGINE V6.6
+        f"""🔎 DEAL HUNTER AI — UNIVERSAL DEAL ENGINE V6.8
 
 Statut :
-Moteur multi-sources activé avec diagnostic complet.
+Moteur multi-sources activé avec décision d'achat.
 
-Améliorations V6.6 :
-Ajout du bloc MEILLEURES PISTES NON RETENUES.
-Acrylic case n'est plus rejeté automatiquement.
-Les offres analysées mais trop faibles sont expliquées.
-Le moteur reste strict contre les faux deals.
+Améliorations V6.8 :
+Prix maximum d'achat conseillé ajouté.
+Écart exact avec le prix cible ajouté.
+Décision claire : achat / négocier / trop cher / rejeté.
+Prix de négociation conseillé pour Ricardo / Suisse.
+Classement par proximité du deal.
+Messages références réduits.
 
 Sources :
 {chr(10).join(source_status)}
@@ -1402,7 +1472,7 @@ Offres rejetées :
 Deals solides :
 {len(good_deals)}
 
-À surveiller :
+À surveiller / négocier :
 {len(watch_deals)}
 
 Pistes non retenues :
@@ -1419,6 +1489,9 @@ Pays SerpApi :
 
 Seuil alerte :
 {DEAL_ALERT_MIN_SCORE}/100
+
+Profit minimal voulu :
+{MIN_PROFIT_CHF} CHF
 
 Conversions :
 USD {USD_TO_CHF} / EUR {EUR_TO_CHF} / GBP {GBP_TO_CHF} / JPY {JPY_TO_CHF}
@@ -1441,6 +1514,9 @@ Heure :
             send_telegram(
                 f"""🚨 DEAL HUNTER AI — DEAL SOLIDE
 
+Décision :
+{item['decision']}
+
 Verdict :
 {item['verdict']}
 
@@ -1453,8 +1529,17 @@ Direction :
 Offre :
 {offer.get('title')}
 
-Prix offre :
+Prix actuel :
 {offer.get('price_chf')} CHF
+
+Prix maximum conseillé :
+{item.get('target_buy_price')} CHF
+
+Écart au deal :
+{item.get('gap_text')}
+
+Négociation :
+{item.get('negotiation_advice')}
 
 Prix original :
 {offer.get('raw_price', 'Non précisé')}
@@ -1464,9 +1549,6 @@ Source :
 
 Pays vendeur détecté :
 {offer.get('seller_country')}
-
-Pays recherche :
-{offer.get('search_country')}
 
 Référence marché :
 {ref.get('catalog_name')}
@@ -1501,19 +1583,25 @@ Vérifier disponibilité, état scellé, langue, vendeur réel et frais de port 
             )
     else:
         send_telegram(
-            "⚪ Aucun deal solide détecté. Le bot affiche les pistes à surveiller et les meilleures pistes non retenues."
+            "⚪ Aucun deal solide détecté. Le bot affiche les offres à négocier et les meilleures pistes non retenues."
         )
 
     if watch_deals:
         lines = []
+
         for item in watch_deals[:MAX_WATCH_MESSAGES]:
             offer = item["offer"]
             ref = item["reference"]
+
             lines.append(
                 f"""— {offer.get('title')}
+Décision : {item['decision']}
 Score : {item['score']}/100
 Verdict : {item['verdict']}
-Prix : {offer.get('price_chf')} CHF
+Prix actuel : {offer.get('price_chf')} CHF
+Prix maximum conseillé : {item.get('target_buy_price')} CHF
+Écart : {item.get('gap_text')}
+Négociation : {item.get('negotiation_advice')}
 Source : {offer.get('source')}
 Pays vendeur : {offer.get('seller_country')}
 Référence : {ref.get('catalog_name')}
@@ -1526,27 +1614,30 @@ Lien : {offer.get('url')}
             )
 
         send_telegram(
-            "🟡 DEAL HUNTER AI — À SURVEILLER MAIS PAS ACHAT AUTOMATIQUE\n\n"
+            "🟡 DEAL HUNTER AI — À SURVEILLER / NÉGOCIER\n\n"
             + "\n".join(lines)
         )
 
     if near_misses:
         lines = []
+
         for item in near_misses[:MAX_NEAR_MISS_MESSAGES]:
             offer = item["offer"]
             ref = item["reference"]
             ref_name = ref.get("catalog_name") if ref else "Aucune référence"
             ref_source = ref.get("reference_source") if ref else "Aucune"
 
-            reason = item.get("reason")
-            if not reason:
-                reason = "Score trop faible / marge insuffisante"
+            reason = item.get("reason") or "Score trop faible / marge insuffisante"
 
             lines.append(
                 f"""— {offer.get('title')}
+Décision : {item['decision']}
 Score : {item['score']}/100
 Verdict : {item['verdict']}
-Prix : {offer.get('price_chf')} CHF
+Prix actuel : {offer.get('price_chf')} CHF
+Prix maximum conseillé : {item.get('target_buy_price')} CHF
+Écart : {item.get('gap_text')}
+Négociation : {item.get('negotiation_advice')}
 Source : {offer.get('source')}
 Pays vendeur : {offer.get('seller_country')}
 Référence : {ref_name}
@@ -1573,6 +1664,7 @@ Lien : {offer.get('url')}
 Prix : {offer.get('price_chf')} CHF
 Source : {offer.get('source')}
 Pays vendeur : {offer.get('seller_country')}
+Décision : {item.get('decision')}
 Raison : {item.get('reason') or item.get('verdict')}
 """
             )
@@ -1601,9 +1693,6 @@ Confiance :
 Score référence :
 {ref.get('score')}/100
 
-Produit référence :
-{ref.get('product')}
-
 Prix référence :
 {ref.get('main_chf')} CHF
 ≈ {ref.get('main_usd')} USD
@@ -1613,9 +1702,6 @@ Marché suisse estimé :
 
 Lecture :
 {reference_market_note(ref)}
-
-Disponibilité :
-{ref.get('availability')}
 
 Lien référence :
 {ref.get('url')}
