@@ -57,6 +57,7 @@ JPY_TO_CHF = env_float("JPY_TO_CHF", 0.0058)
 MAX_REFERENCE_MESSAGES = env_int("MAX_REFERENCE_MESSAGES", 8)
 MAX_DEAL_MESSAGES = env_int("MAX_DEAL_MESSAGES", 8)
 MAX_WATCH_MESSAGES = env_int("MAX_WATCH_MESSAGES", 10)
+MAX_NEAR_MISS_MESSAGES = env_int("MAX_NEAR_MISS_MESSAGES", 10)
 MAX_REJECTED_MESSAGES = env_int("MAX_REJECTED_MESSAGES", 8)
 
 DEAL_ALERT_MIN_SCORE = env_int("DEAL_ALERT_MIN_SCORE", 75)
@@ -147,7 +148,17 @@ CATALOG = [
         "query": "pokemon evolving skies booster box",
         "shopping_query": "Pokemon Evolving Skies booster box sealed",
         "required": ["pokemon", "evolving skies", "booster box"],
-        "exclude": ["half booster", "korean", "chinese", "german", "deutsch", "italian", "spanish", "single pack", "proxy"],
+        "exclude": [
+            "half booster",
+            "korean",
+            "chinese",
+            "german",
+            "deutsch",
+            "italian",
+            "spanish",
+            "single pack",
+            "proxy",
+        ],
         "swiss_range": (650, 850),
         "fallback_international_chf": 2200,
         "fallback_confidence": "Moyenne",
@@ -157,7 +168,18 @@ CATALOG = [
         "query": "pokemon japanese scarlet violet 151 booster box",
         "shopping_query": "Pokemon Japanese Scarlet Violet 151 booster box sealed display",
         "required": ["pokemon", "japanese", "151", "booster box"],
-        "exclude": ["chinese", "korean", "surprise", "jumbo", "slim", "volume", "mini tin", "poster", "binder", "single pack"],
+        "exclude": [
+            "chinese",
+            "korean",
+            "surprise",
+            "jumbo",
+            "slim",
+            "volume",
+            "mini tin",
+            "poster",
+            "binder",
+            "single pack",
+        ],
         "swiss_range": (115, 145),
         "fallback_international_chf": 265,
         "fallback_confidence": "Moyenne",
@@ -238,7 +260,17 @@ CATALOG = [
         "query": "one piece carrying on his will booster box",
         "shopping_query": "One Piece Carrying On His Will booster box sealed",
         "required": ["one piece", "carrying on his will", "booster box"],
-        "exclude": ["op-14", "op-12", "azure", "egghead", "legacy", "korean", "chinese", "proxy", "single pack"],
+        "exclude": [
+            "op-14",
+            "op-12",
+            "azure",
+            "egghead",
+            "legacy",
+            "korean",
+            "chinese",
+            "proxy",
+            "single pack",
+        ],
         "swiss_range": (90, 150),
         "fallback_international_chf": 445,
         "fallback_confidence": "Moyenne",
@@ -276,6 +308,7 @@ GLOBAL_EXCLUDE = [
     "time warp",
 ]
 
+
 BAD_SOURCE_TERMS = [
     "aliexpress",
     "temu",
@@ -286,6 +319,7 @@ BAD_SOURCE_TERMS = [
     "replica",
     "unbranded",
 ]
+
 
 BAD_BOOSTER_BOX_TYPE_TERMS = [
     "special set",
@@ -305,11 +339,10 @@ BAD_BOOSTER_BOX_TYPE_TERMS = [
     "lot of",
     "sealed case",
     "case of",
-    "display case",
-    "acrylic case",
     "deck",
     "starter deck",
 ]
+
 
 SWISS_SOURCE_HINTS = [
     "ricardo.ch",
@@ -407,7 +440,6 @@ def keyword_present(text: str, keyword: str) -> bool:
     key = normalize(keyword)
 
     if key == "booster box":
-        # V6.5 : le simple mot "box" ne suffit plus.
         return any(
             x in low
             for x in [
@@ -1218,7 +1250,6 @@ def evaluate_offer(offer: dict, ref: dict | None) -> dict:
     if ref_chf > swiss_high * 1.4 and direction == "EXPORT_CH" and profit > 0:
         score += 5
 
-    # V6.5 : référence interne + vendeur non confirmé = jamais deal solide.
     if ref.get("reference_source") == "Base interne":
         reason = (reason + " / " if reason else "") + "référence interne de secours"
 
@@ -1330,22 +1361,25 @@ def main():
         x for x in evaluated
         if WATCH_MIN_SCORE <= x["score"] < DEAL_ALERT_MIN_SCORE
     ]
+    near_misses = [
+        x for x in evaluated
+        if x["score"] < WATCH_MIN_SCORE
+    ]
 
     export_deals = [x for x in good_deals if x["direction"] == "EXPORT_CH"]
     import_deals = [x for x in good_deals if x["direction"] == "IMPORT_TO_CH"]
 
     send_telegram(
-        f"""🔎 DEAL HUNTER AI — UNIVERSAL DEAL ENGINE V6.5
+        f"""🔎 DEAL HUNTER AI — UNIVERSAL DEAL ENGINE V6.6
 
 Statut :
-Moteur multi-sources activé avec filtre strict vraie booster box.
+Moteur multi-sources activé avec diagnostic complet.
 
-Améliorations V6.5 :
-Le simple mot "box" ne suffit plus.
-Il faut booster box / booster display / display box.
-Special Set / VMAX Special / collection / lot / case sont rejetés.
-Référence interne + vendeur eBay/unknown ne peut plus devenir deal solide.
-Les offres douteuses passent au mieux en À SURVEILLER.
+Améliorations V6.6 :
+Ajout du bloc MEILLEURES PISTES NON RETENUES.
+Acrylic case n'est plus rejeté automatiquement.
+Les offres analysées mais trop faibles sont expliquées.
+Le moteur reste strict contre les faux deals.
 
 Sources :
 {chr(10).join(source_status)}
@@ -1370,6 +1404,9 @@ Deals solides :
 
 À surveiller :
 {len(watch_deals)}
+
+Pistes non retenues :
+{len(near_misses)}
 
 Export Suisse → étranger :
 {len(export_deals)}
@@ -1464,7 +1501,7 @@ Vérifier disponibilité, état scellé, langue, vendeur réel et frais de port 
             )
     else:
         send_telegram(
-            "⚪ Aucun deal solide détecté. Les meilleures pistes passent dans le bloc À SURVEILLER."
+            "⚪ Aucun deal solide détecté. Le bot affiche les pistes à surveiller et les meilleures pistes non retenues."
         )
 
     if watch_deals:
@@ -1490,6 +1527,40 @@ Lien : {offer.get('url')}
 
         send_telegram(
             "🟡 DEAL HUNTER AI — À SURVEILLER MAIS PAS ACHAT AUTOMATIQUE\n\n"
+            + "\n".join(lines)
+        )
+
+    if near_misses:
+        lines = []
+        for item in near_misses[:MAX_NEAR_MISS_MESSAGES]:
+            offer = item["offer"]
+            ref = item["reference"]
+            ref_name = ref.get("catalog_name") if ref else "Aucune référence"
+            ref_source = ref.get("reference_source") if ref else "Aucune"
+
+            reason = item.get("reason")
+            if not reason:
+                reason = "Score trop faible / marge insuffisante"
+
+            lines.append(
+                f"""— {offer.get('title')}
+Score : {item['score']}/100
+Verdict : {item['verdict']}
+Prix : {offer.get('price_chf')} CHF
+Source : {offer.get('source')}
+Pays vendeur : {offer.get('seller_country')}
+Référence : {ref_name}
+Source référence : {ref_source}
+Profit estimé : {item['profit']} CHF
+ROI : {item['roi']} %
+Pourquoi non retenu :
+{reason}
+Lien : {offer.get('url')}
+"""
+            )
+
+        send_telegram(
+            "🔍 DEAL HUNTER AI — MEILLEURES PISTES NON RETENUES\n\n"
             + "\n".join(lines)
         )
 
