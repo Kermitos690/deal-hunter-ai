@@ -12,6 +12,7 @@ import requests
 from bs4 import BeautifulSoup
 import market_evidence
 
+
 # =========================
 # CONFIGURATION
 # =========================
@@ -63,6 +64,7 @@ MAX_REJECTED_MESSAGES = env_int("MAX_REJECTED_MESSAGES", 6)
 DEAL_ALERT_MIN_SCORE = env_int("DEAL_ALERT_MIN_SCORE", 75)
 WATCH_MIN_SCORE = env_int("WATCH_MIN_SCORE", 45)
 MARKET_WATCH_MIN_SCORE = env_int("MARKET_WATCH_MIN_SCORE", 55)
+
 MIN_SELLER_CONFIDENCE_FOR_AUTO_DEAL = env_int("MIN_SELLER_CONFIDENCE_FOR_AUTO_DEAL", 50)
 MIN_MARKET_EVIDENCE_FOR_SOLID_DEAL = env_int("MIN_MARKET_EVIDENCE_FOR_SOLID_DEAL", 55)
 REQUIRE_MARKET_EVIDENCE_FOR_SOLID_DEAL = env_int("REQUIRE_MARKET_EVIDENCE_FOR_SOLID_DEAL", 1)
@@ -395,6 +397,7 @@ MEDIUM_TRUST_TERMS = [
     "stockx",
     "cardmarket",
 ]
+
 
 # =========================
 # OUTILS
@@ -1565,6 +1568,7 @@ def evaluate_offer(offer: dict, ref: dict | None) -> dict:
     result["action_recommended"] = make_action_recommendation(result)
     return result
 
+
 def attach_market_evidence(result):
     ref = result.get("reference")
 
@@ -1618,60 +1622,8 @@ def attach_market_evidence(result):
         )
 
     return result
-def attach_market_evidence(result):
-    ref = result.get("reference")
 
-    if not ref:
-        result["market_evidence"] = None
-        result["evidence_score"] = 0
-        result["evidence_sales_30"] = 0
-        result["evidence_sales_90"] = 0
-        result["evidence_median_text"] = "Aucune"
-        result["evidence_decision"] = "🟠 Aucune preuve marché"
-        result["evidence_action"] = "Aucune référence exploitable"
-        result["score_before_evidence_gate"] = None
-        return result
 
-    evidence = market_evidence.compute_market_evidence(ref.get("catalog_name"))
-
-    median = evidence.get("median_sold_chf")
-    median_text = f"{median} CHF" if median is not None else "Aucune"
-
-    result["market_evidence"] = evidence
-    result["evidence_score"] = evidence.get("evidence_score", 0)
-    result["evidence_sales_30"] = evidence.get("sales_30_count", 0)
-    result["evidence_sales_90"] = evidence.get("sales_90_count", 0)
-    result["evidence_median_text"] = median_text
-    result["evidence_decision"] = evidence.get("evidence_decision")
-    result["evidence_action"] = evidence.get("evidence_action")
-    result["score_before_evidence_gate"] = None
-
-    is_candidate_deal = (
-        result.get("direction") != "REJECTED"
-        and result.get("score", 0) >= DEAL_ALERT_MIN_SCORE
-    )
-
-    evidence_too_weak = (
-        result.get("evidence_score", 0) < MIN_MARKET_EVIDENCE_FOR_SOLID_DEAL
-    )
-
-    if REQUIRE_MARKET_EVIDENCE_FOR_SOLID_DEAL == 1 and is_candidate_deal and evidence_too_weak:
-        result["score_before_evidence_gate"] = result.get("score", 0)
-        result["score"] = min(result.get("score", 0), 70)
-        result["flip_decision"] = "🟡 FLIP À VÉRIFIER"
-        result["verdict"] = "🟡 Prix intéressant mais ventes réelles insuffisantes"
-
-        old_reason = result.get("reason") or ""
-        extra_reason = "preuve marché insuffisante / ventes réelles manquantes"
-        result["reason"] = f"{old_reason} / {extra_reason}" if old_reason else extra_reason
-
-        result["action_recommended"] = (
-            "Prix potentiellement intéressant, mais pas assez de ventes réelles renseignées. "
-            "Ne pas acheter automatiquement. Vérifier eBay sold / Cardmarket / ventes récentes puis ajouter les ventes dans sales_comps.csv."
-        )
-
-    return result
-    
 def proximity_sort_key(item):
     market_score = item.get("market_score", 0)
     seller_score = item.get("seller_confidence_score", 0)
@@ -1749,29 +1701,28 @@ def main():
     rejected = []
 
     for offer in offers:
-    ref = refs.get(offer.get("catalog_name"))
-    result = evaluate_offer(offer, ref)
-    result = attach_market_evidence(result)
+        ref = refs.get(offer.get("catalog_name"))
+        result = evaluate_offer(offer, ref)
+        result = attach_market_evidence(result)
 
-    if result["direction"] == "REJECTED":
-        rejected.append(result)
-    else:
-        evaluated.append(result)
-
+        if result["direction"] == "REJECTED":
+            rejected.append(result)
+        else:
+            evaluated.append(result)
 
     evaluated = sorted(evaluated, key=proximity_sort_key)
     rejected = sorted(rejected, key=lambda x: x["offer"].get("price_chf", 999999))
     references = sorted(references, key=lambda x: x["score"], reverse=True)
 
-good_deals = [
-    x for x in evaluated
-    if x["score"] >= DEAL_ALERT_MIN_SCORE
-    and x["seller_confidence_score"] >= MIN_SELLER_CONFIDENCE_FOR_AUTO_DEAL
-    and (
-        REQUIRE_MARKET_EVIDENCE_FOR_SOLID_DEAL == 0
-        or x.get("evidence_score", 0) >= MIN_MARKET_EVIDENCE_FOR_SOLID_DEAL
-    )
-]
+    good_deals = [
+        x for x in evaluated
+        if x["score"] >= DEAL_ALERT_MIN_SCORE
+        and x["seller_confidence_score"] >= MIN_SELLER_CONFIDENCE_FOR_AUTO_DEAL
+        and (
+            REQUIRE_MARKET_EVIDENCE_FOR_SOLID_DEAL == 0
+            or x.get("evidence_score", 0) >= MIN_MARKET_EVIDENCE_FOR_SOLID_DEAL
+        )
+    ]
 
     watch_deals = [
         x for x in evaluated
@@ -1787,7 +1738,7 @@ good_deals = [
         if x not in good_deals and x not in watch_deals
     ]
 
-        export_deals = [x for x in good_deals if x["direction"] == "EXPORT_CH"]
+    export_deals = [x for x in good_deals if x["direction"] == "EXPORT_CH"]
     import_deals = [x for x in good_deals if x["direction"] == "IMPORT_TO_CH"]
     market_ok = [x for x in evaluated if x["market_score"] >= MARKET_WATCH_MIN_SCORE]
     low_seller_watch = [x for x in watch_deals if x["seller_confidence_score"] < MIN_SELLER_CONFIDENCE_FOR_AUTO_DEAL]
@@ -1796,19 +1747,19 @@ good_deals = [
         x for x in evaluated
         if x.get("score_before_evidence_gate") is not None
     ]
+
     send_telegram(
         f"""🔎 DEAL HUNTER AI — UNIVERSAL DEAL ENGINE V7.2
 
 Statut :
-Moteur multi-sources activé avec confiance vendeur.
+Moteur multi-sources activé avec preuve de marché.
 
 Améliorations V7.2 :
-Score confiance vendeur ajouté.
-Risque vendeur / plateforme ajouté.
-Action recommandée ajoutée.
-eBay inconnu = achat manuel obligatoire.
-Les prix marché corrects sont séparés des vrais deals flip.
-Messages Telegram réduits.
+Score confiance vendeur conservé.
+Preuve de ventes réelles ajoutée.
+PriceCharting ne peut plus valider seul un deal solide.
+Deal solide = vendeur fiable + preuve marché suffisante.
+Les deals théoriques sans ventes réelles sont rétrogradés en À vérifier.
 
 Sources :
 {chr(10).join(source_status)}
@@ -1839,6 +1790,12 @@ Prix marché corrects :
 
 Alertes avec vendeur faible :
 {len(low_seller_watch)}
+
+Deals rétrogradés preuve marché faible :
+{len(evidence_downgraded)}
+
+Seuil preuve marché solide :
+{MIN_MARKET_EVIDENCE_FOR_SOLID_DEAL}/100
 
 Pistes non retenues :
 {len(near_misses)}
@@ -1878,13 +1835,22 @@ Heure :
             ref = item["reference"]
 
             send_telegram(
-                f"""🚨 DEAL HUNTER AI — DEAL FLIP SOLIDE
+                f"""🚨 DEAL HUNTER AI — DEAL FLIP SOLIDE CONFIRMÉ
 
 Décision flip :
 {item['flip_decision']}
 
 Décision marché :
 {item['market_decision']}
+
+Preuve marché :
+{item.get('evidence_decision')} — {item.get('evidence_score')}/100
+
+Ventes réelles 90j :
+{item.get('evidence_sales_90')}
+
+Prix médian vendu :
+{item.get('evidence_median_text')}
 
 Confiance vendeur :
 {item['seller_confidence_label']} — {item['seller_confidence_score']}/100
@@ -1937,7 +1903,7 @@ Lien :
             )
     else:
         send_telegram(
-            "⚪ Aucun deal flip solide détecté. Le bot affiche les prix marché corrects et la confiance vendeur."
+            "⚪ Aucun deal flip solide confirmé. Le bot exige maintenant des preuves de ventes réelles."
         )
 
     if watch_deals:
@@ -1951,6 +1917,9 @@ Lien :
                 f"""— {offer.get('title')}
 Décision flip : {item['flip_decision']}
 Décision marché : {item['market_decision']}
+Preuve marché : {item.get('evidence_decision')} — {item.get('evidence_score')}/100
+Ventes réelles 90j : {item.get('evidence_sales_90')}
+Prix médian vendu : {item.get('evidence_median_text')}
 Confiance vendeur : {item['seller_confidence_label']} — {item['seller_confidence_score']}/100
 Risque : {item['seller_risk']}
 Action : {item['action_recommended']}
@@ -1970,7 +1939,7 @@ Lien : {offer.get('url')}
             )
 
         send_telegram(
-            "🟡 DEAL HUNTER AI — À SURVEILLER / PRIX MARCHÉ / CONFIANCE VENDEUR\n\n"
+            "🟡 DEAL HUNTER AI — À SURVEILLER / PREUVE MARCHÉ INSUFFISANTE\n\n"
             + "\n".join(lines)
         )
 
@@ -1986,6 +1955,8 @@ Lien : {offer.get('url')}
                 f"""— {offer.get('title')}
 Décision flip : {item['flip_decision']}
 Décision marché : {item['market_decision']}
+Preuve marché : {item.get('evidence_decision')} — {item.get('evidence_score')}/100
+Ventes réelles 90j : {item.get('evidence_sales_90')}
 Confiance vendeur : {item['seller_confidence_label']} — {item['seller_confidence_score']}/100
 Prix actuel : {offer.get('price_chf')} CHF
 Prix marché effectif : {item.get('market_effective_price')} CHF
