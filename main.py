@@ -477,7 +477,7 @@ def build_gsheet_action_url(action, item, include_full_url=False):
     offer = item.get("offer", {})
     deal_id = item.get("deal_id") or make_deal_id(item)
 
-    params = {
+      params = {
         "action": action,
         "token": GSHEET_ACTION_TOKEN,
         "deal_id": deal_id,
@@ -488,6 +488,11 @@ def build_gsheet_action_url(action, item, include_full_url=False):
         "score": short_param(item.get("score"), 10),
         "market_decision": short_param(item.get("market_decision"), 90),
         "evidence_score": short_param(item.get("evidence_score"), 10),
+        "flip_decision": short_param(item.get("flip_decision"), 50),
+        "profit_chf": short_param(item.get("profit"), 20),
+        "roi_percent": short_param(item.get("roi"), 20),
+        "target_buy_price": short_param(item.get("target_buy_price"), 20),
+        "market_effective_price": short_param(item.get("market_effective_price"), 20),
         "notes": "Action depuis Telegram",
     }
 
