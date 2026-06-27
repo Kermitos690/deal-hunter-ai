@@ -549,6 +549,54 @@ def telegram_action_buttons(item):
         )
         
     return {"inline_keyboard": buttons}
+def build_gsheet_page_url(action):
+    if not GSHEET_ACTION_WEBHOOK_URL or not GSHEET_ACTION_TOKEN:
+        return None
+
+    return GSHEET_ACTION_WEBHOOK_URL + "?" + urlencode(
+        {
+            "action": action,
+            "token": GSHEET_ACTION_TOKEN,
+        }
+    )
+
+
+def send_static_telegram_menu():
+    dashboard_url = build_gsheet_page_url("MENU")
+    tutorial_url = build_gsheet_page_url("TUTORIAL")
+
+    if not dashboard_url:
+        return
+
+    buttons = {
+        "inline_keyboard": [
+            [
+                {"text": "📌 Dashboard privé", "url": dashboard_url},
+            ],
+            [
+                {"text": "🟡 Annonces à vérifier", "url": dashboard_url},
+                {"text": "✅ Achats", "url": dashboard_url},
+            ],
+            [
+                {"text": "💰 Reventes", "url": dashboard_url},
+                {"text": "📘 Tutoriel", "url": tutorial_url or dashboard_url},
+            ],
+        ]
+    }
+
+    send_telegram(
+        """📌 DEAL HUNTER CARDS — MENU PRIVÉ
+
+Utilise ce menu pour retrouver :
+🟡 tes annonces à vérifier
+✅ tes achats
+💰 tes reventes
+🗑️ les annonces ignorées
+📘 le tutoriel
+
+Ce menu ouvre ton dashboard privé.""",
+        reply_markup=buttons,
+    )
 
 def normalize(text: str) -> str:
     low = str(text or "").lower()
@@ -2209,7 +2257,9 @@ Lien référence :
 {ref.get('url')}
 """
         )
-
-
+        
+    send_static_telegram_menu()
+    
+    
 if __name__ == "__main__":
     main()
