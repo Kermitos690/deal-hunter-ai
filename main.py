@@ -671,6 +671,132 @@ Ce menu ouvre ton dashboard privé.""",
         reply_markup=buttons,
     )
 
+def item_category(item):
+    offer = item.get("offer", {})
+    ref = item.get("reference") or {}
+
+    text = normalize(
+        f"{offer.get('catalog_name', '')} "
+        f"{offer.get('title', '')} "
+        f"{ref.get('catalog_name', '')}"
+    )
+
+    if "pokemon" in text:
+        return "pokemon"
+
+    if "one piece" in text:
+        return "one_piece"
+
+    if "lorcana" in text:
+        return "lorcana"
+
+    if "topps" in text:
+        return "topps"
+
+    if "yu gi oh" in text or "yugioh" in text:
+        return "yugioh"
+
+    if "magic" in text or "mtg" in text:
+        return "mtg"
+
+    return "other"
+
+
+def split_user_field(value):
+    raw = str(value or "").lower().strip()
+
+    if not raw:
+        return []
+
+    raw = raw.replace(" ", "")
+    raw = raw.replace(";", ",")
+    raw = raw.replace("|", ",")
+    raw = raw.replace("/", ",")
+
+    return [x.strip() for x in raw.split(",") if x.strip()]
+
+
+def user_matches_item(user, item):
+    offer = item.get("offer", {})
+
+    categories = split_user_field(user.get("categories"))
+    countries = split_user_field(user.get("countries"))
+
+    category = item_category(item)
+
+    if categories and "all" not in categories and "*" not in categories:
+        if category not in categories:
+            return False
+
+    seller_country = str(offer.get("seller_country") or "").lower().strip()
+    search_country = str(offer.get("search_country") or "").lower().strip()
+
+    if countries and "all" not in countries and "*" not in countries:
+        if seller_country not in countries and search_country not in countries:
+            return False
+
+    try:
+        max_price = float(user.get("max_price_chf") or 0)
+    except Exception:
+        max_price = 0
+
+    try:
+        price = float(offer.get("price_chf") or 0)
+    except Exception:
+        price = 0
+
+    if max_price > 0 and price > max_price:
+        return False
+
+    try:
+        min_profit = float(user.get("min_profit_chf") or 0)
+    except Exception:
+        min_profit = 0
+
+    try:
+        profit = float(item.get("profit") or 0)
+    except Exception:
+        profit = 0
+
+    if min_profit > 0 and profit < min_profit:
+        return False
+
+    try:
+        min_roi = float(user.get("min_roi_percent") or 0)
+    except Exception:
+        min_roi = 0
+
+    try:
+        roi = float(item.get("roi") or 0)
+    except Exception:
+        roi = 0
+
+    if min_roi > 0 and roi < min_roi:
+        return False
+
+    return True
+
+
+def send_filtered_telegram(item, message, reply_markup=None):
+    if ACTIVE_USERS:
+        sent = 0
+
+        for user in ACTIVE_USERS:
+            chat_id = str(user.get("telegram_chat_id") or "").strip()
+
+            if chat_id and user_matches_item(user, item):
+                send_telegram(
+                    message,
+                    reply_markup=reply_markup,
+                    chat_id=chat_id,
+                )
+                sent += 1
+
+        print("Filtered message sent to users:", sent)
+        return
+
+    send_telegram(message, reply_markup=reply_markup)
+
 def normalize(text: str) -> str:
     low = str(text or "").lower()
     replacements = {
@@ -1893,6 +2019,7 @@ def proximity_sort_key(item):
 
 def main():
     configure_telegram_targets()
+
     references = []
     errors = []
 
@@ -2093,7 +2220,7 @@ Heure :
             log_deal_to_sheet(item)
             buttons = telegram_action_buttons(item)
 
-            send_telegram(
+send_filtered_telegram(item,
                 f"""🚨 DEAL HUNTER AI — DEAL FLIP SOLIDE CONFIRMÉ
 
 Deal ID :
@@ -2178,7 +2305,7 @@ Lien :
             log_deal_to_sheet(item)
             buttons = telegram_action_buttons(item)
 
-            send_telegram(
+            send_filtered_telegram(item,
                 f"""🟡 DEAL HUNTER AI — À SURVEILLER / PREUVE MARCHÉ INSUFFISANTE
 
 Deal ID :
