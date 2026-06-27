@@ -3,11 +3,31 @@ name: Deal Hunter AI
 on:
   workflow_dispatch:
   schedule:
-    - cron: "*/15 * * * *"
+    - cron: "0 */6 * * *"
 
 jobs:
   run:
     runs-on: ubuntu-latest
+
+    env:
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+
+      SERPAPI_API_KEY: ${{ secrets.SERPAPI_API_KEY }}
+      SERPAPI_COUNTRIES: ${{ secrets.SERPAPI_COUNTRIES }}
+
+      EBAY_CLIENT_ID: ${{ secrets.EBAY_CLIENT_ID }}
+      EBAY_CLIENT_SECRET: ${{ secrets.EBAY_CLIENT_SECRET }}
+      EBAY_MARKETPLACES: ${{ secrets.EBAY_MARKETPLACES }}
+
+      EMAIL_IMAP_SERVER: ${{ secrets.EMAIL_IMAP_SERVER }}
+      EMAIL_ADDRESS: ${{ secrets.EMAIL_ADDRESS }}
+      EMAIL_APP_PASSWORD: ${{ secrets.EMAIL_APP_PASSWORD }}
+
+      USD_TO_CHF: ${{ secrets.USD_TO_CHF }}
+      EUR_TO_CHF: ${{ secrets.EUR_TO_CHF }}
+      GBP_TO_CHF: ${{ secrets.GBP_TO_CHF }}
+      JPY_TO_CHF: ${{ secrets.JPY_TO_CHF }}
 
     steps:
       - name: Télécharger le projet
@@ -24,7 +44,4 @@ jobs:
           pip install -r requirements.txt
 
       - name: Lancer Deal Hunter AI
-        env:
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: python main.py
