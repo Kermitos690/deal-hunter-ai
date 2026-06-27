@@ -74,7 +74,8 @@ jobs:
           EMAIL_APP_PASSWORD: ${{ secrets.EMAIL_APP_PASSWORD }}
 
           SERPAPI_COUNTRIES: ${{ secrets.SERPAPI_COUNTRIES }}
-
+          GSHEET_ACTION_WEBHOOK_URL: ${{ secrets.GSHEET_ACTION_WEBHOOK_URL }}
+          GSHEET_ACTION_TOKEN: ${{ secrets.GSHEET_ACTION_TOKEN }}
           USD_TO_CHF: ${{ secrets.USD_TO_CHF }}
           EUR_TO_CHF: ${{ secrets.EUR_TO_CHF }}
           GBP_TO_CHF: ${{ secrets.GBP_TO_CHF }}
