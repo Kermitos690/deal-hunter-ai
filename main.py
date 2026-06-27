@@ -405,7 +405,7 @@ MEDIUM_TRUST_TERMS = [
 # OUTILS
 # =========================
 
-def send_telegram(message: str, reply_markup=None):
+def send_telegram(message: str, reply_markup=None, disable_preview=True):
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
         print("Telegram secrets missing.")
         print(message)
@@ -415,7 +415,7 @@ def send_telegram(message: str, reply_markup=None):
     payload = {
         "chat_id": TELEGRAM_CHAT_ID,
         "text": message[:3900],
-        "disable_web_page_preview": False,
+        "disable_web_page_preview": disable_preview,
     }
 
     if reply_markup:
@@ -445,7 +445,31 @@ def make_deal_id(item):
     )
     return "dh_" + hashlib.sha1(raw.encode("utf-8")).hexdigest()[:16]
 
+def build_search_url(item):
+    offer = item.get("offer", {})
+    title = offer.get("title", "")
+    source = offer.get("source", "")
+    platform = offer.get("platform", "")
 
+    blob = normalize(f"{source} {platform}")
+
+    domain = ""
+    if "ricardo" in blob:
+        domain = "site:ricardo.ch "
+    elif "ebay" in blob:
+        domain = "site:ebay.com OR site:ebay.ch "
+    elif "stockx" in blob:
+        domain = "site:stockx.com "
+    elif "galaxus" in blob:
+        domain = "site:galaxus.ch "
+    elif "digitec" in blob:
+        domain = "site:digitec.ch "
+    elif "cardmarket" in blob:
+        domain = "site:cardmarket.com "
+
+    query = f"{domain}{title}"
+    return "https://www.google.com/search?" + urlencode({"q": query})
+    
 def build_gsheet_action_url(action, item, include_full_url=False):
     if not GSHEET_ACTION_WEBHOOK_URL or not GSHEET_ACTION_TOKEN:
         return None
@@ -504,13 +528,21 @@ def telegram_action_buttons(item):
         ],
     ]
 
+    search_url = build_search_url(item)
+
+    buttons.append(
+        [
+            {"text": "🔎 Recherche exacte", "url": search_url}
+        ]
+    )
+
     if offer_url:
         buttons.append(
             [
                 {"text": "🔗 Ouvrir annonce", "url": offer_url}
             ]
         )
-
+        
     return {"inline_keyboard": buttons}
 
 def normalize(text: str) -> str:
@@ -1839,12 +1871,15 @@ def main():
     ]
 
     send_telegram(
-        f"""🔎 DEAL HUNTER AI — UNIVERSAL DEAL ENGINE V8.0
+        f"""🔎 DEAL HUNTER AI — UNIVERSAL DEAL ENGINE V8.1
 
 Statut :
 Moteur multi-sources activé avec preuve de marché et boutons Google Sheets.
 
-Améliorations V8.0 :
+Améliorations V8.1 :
+
+Aperçus Telegram désactivés et bouton Recherche exacte ajouté.
+
 Score confiance vendeur conservé.
 Preuve de ventes réelles ajoutée.
 PriceCharting ne peut plus valider seul un deal solide.
@@ -2108,7 +2143,6 @@ Pays vendeur : {offer.get('seller_country')}
 Référence : {ref.get('catalog_name')}
 Pourquoi non retenu :
 {reason}
-Lien : {offer.get('url')}
 """
             )
 
