@@ -54,15 +54,16 @@ EUR_TO_CHF = env_float("EUR_TO_CHF", 0.96)
 GBP_TO_CHF = env_float("GBP_TO_CHF", 1.13)
 JPY_TO_CHF = env_float("JPY_TO_CHF", 0.0058)
 
-MAX_REFERENCE_MESSAGES = env_int("MAX_REFERENCE_MESSAGES", 3)
-MAX_DEAL_MESSAGES = env_int("MAX_DEAL_MESSAGES", 8)
-MAX_WATCH_MESSAGES = env_int("MAX_WATCH_MESSAGES", 10)
-MAX_NEAR_MISS_MESSAGES = env_int("MAX_NEAR_MISS_MESSAGES", 10)
-MAX_REJECTED_MESSAGES = env_int("MAX_REJECTED_MESSAGES", 8)
+MAX_REFERENCE_MESSAGES = env_int("MAX_REFERENCE_MESSAGES", 2)
+MAX_DEAL_MESSAGES = env_int("MAX_DEAL_MESSAGES", 6)
+MAX_WATCH_MESSAGES = env_int("MAX_WATCH_MESSAGES", 6)
+MAX_NEAR_MISS_MESSAGES = env_int("MAX_NEAR_MISS_MESSAGES", 6)
+MAX_REJECTED_MESSAGES = env_int("MAX_REJECTED_MESSAGES", 6)
 
 DEAL_ALERT_MIN_SCORE = env_int("DEAL_ALERT_MIN_SCORE", 75)
 WATCH_MIN_SCORE = env_int("WATCH_MIN_SCORE", 45)
 MARKET_WATCH_MIN_SCORE = env_int("MARKET_WATCH_MIN_SCORE", 55)
+MIN_SELLER_CONFIDENCE_FOR_AUTO_DEAL = env_int("MIN_SELLER_CONFIDENCE_FOR_AUTO_DEAL", 50)
 
 SELLING_FEE_RATE = env_float("SELLING_FEE_RATE", 0.13)
 EXPORT_SHIPPING_BUFFER_CHF = env_float("EXPORT_SHIPPING_BUFFER_CHF", 25)
@@ -369,6 +370,32 @@ SWISS_SOURCE_HINTS = [
 ]
 
 
+TRUSTED_SHOP_TERMS = [
+    "galaxus",
+    "digitec",
+    "brack",
+    "wog.ch",
+    "world of games",
+    "cardtreasure",
+    "poke-geek",
+    "tcg-store.ch",
+    "cardsparadise",
+    "cardcollect",
+    "fantasybasel",
+]
+
+
+MEDIUM_TRUST_TERMS = [
+    "ricardo.ch",
+    "tutti.ch",
+    "anibis.ch",
+    "japan2uk",
+    "stockx",
+    "cardmarket",
+    "ebay -",
+]
+
+
 # =========================
 # OUTILS
 # =========================
@@ -652,6 +679,87 @@ def detect_seller_country(source: str, url: str) -> str:
         return "INTERNATIONAL"
 
     return "UNKNOWN"
+
+
+def compute_seller_confidence(offer: dict) -> dict:
+    title = offer.get("title", "")
+    source = offer.get("source", "")
+    platform = offer.get("platform", "")
+    url = offer.get("url", "")
+    seller_country = str(offer.get("seller_country") or "UNKNOWN").upper()
+
+    blob = normalize(f"{title} {source} {platform} {url}")
+
+    if is_bad_source(source, url, title):
+        return {
+            "seller_confidence_score": 0,
+            "seller_confidence_label": "🔴 Très faible",
+            "seller_risk": "Source exclue ou plateforme à risque",
+            "seller_action": "Ignorer",
+        }
+
+    if any(term in blob for term in TRUSTED_SHOP_TERMS):
+        return {
+            "seller_confidence_score": 85,
+            "seller_confidence_label": "🟢 Forte",
+            "seller_risk": "Boutique ou source suisse connue",
+            "seller_action": "Vérifier stock, état scellé et frais, puis achat possible si le prix est bon",
+        }
+
+    if "ricardo.ch" in blob:
+        return {
+            "seller_confidence_score": 70,
+            "seller_confidence_label": "🟡 Moyenne à forte",
+            "seller_risk": "Marketplace suisse : vendeur individuel à vérifier",
+            "seller_action": "Vérifier profil vendeur, évaluations, photos réelles et possibilité de remise en main propre",
+        }
+
+    if any(term in blob for term in MEDIUM_TRUST_TERMS):
+        return {
+            "seller_confidence_score": 60,
+            "seller_confidence_label": "🟡 Moyenne",
+            "seller_risk": "Source connue mais vendeur/frais à contrôler",
+            "seller_action": "Vérifier vendeur, frais de port, pays d’expédition, TVA et état scellé",
+        }
+
+    if "ebay" in blob and seller_country == "EBAY_UNKNOWN":
+        return {
+            "seller_confidence_score": 35,
+            "seller_confidence_label": "🟠 Faible",
+            "seller_risk": "eBay via Google Shopping : pays vendeur et annonce réelle non confirmés",
+            "seller_action": "Ne pas acheter automatiquement. Ouvrir l’annonce, vérifier vendeur, photos, stock, frais, retours et authenticité",
+        }
+
+    if "ebay" in blob:
+        return {
+            "seller_confidence_score": 45,
+            "seller_confidence_label": "🟠 Faible à moyenne",
+            "seller_risk": "eBay : vendeur à contrôler manuellement",
+            "seller_action": "Vérifier profil vendeur, pays d’expédition, frais, photos réelles et protection acheteur",
+        }
+
+    if seller_country == "CH":
+        return {
+            "seller_confidence_score": 55,
+            "seller_confidence_label": "🟡 Moyenne",
+            "seller_risk": "Vendeur suisse détecté, mais source pas totalement qualifiée",
+            "seller_action": "Vérifier identité du vendeur, état scellé, photos et remise possible",
+        }
+
+    if seller_country in ["UNKNOWN", "INTERNATIONAL", "EBAY_UNKNOWN"]:
+        return {
+            "seller_confidence_score": 30,
+            "seller_confidence_label": "🔴 Faible",
+            "seller_risk": "Vendeur ou pays non confirmé",
+            "seller_action": "Vérification obligatoire avant tout achat",
+        }
+
+    return {
+        "seller_confidence_score": 50,
+        "seller_confidence_label": "🟡 Moyenne",
+        "seller_risk": "Source partiellement exploitable, détails à vérifier",
+        "seller_action": "Vérifier vendeur, frais, état scellé, langue et photos",
+    }
 
 
 # =========================
@@ -1156,6 +1264,8 @@ def reference_market_note(ref: dict) -> str:
 
 
 def reject_result(offer, ref, reason):
+    seller_view = compute_seller_confidence(offer)
+
     return {
         "offer": offer,
         "reference": ref,
@@ -1178,6 +1288,8 @@ def reject_result(offer, ref, reason):
         "market_gap_text": "Non calculable",
         "market_range_text": "Non calculable",
         "negotiation_advice": "Ne pas acheter",
+        "action_recommended": "Ignorer cette offre",
+        **seller_view,
     }
 
 
@@ -1285,7 +1397,34 @@ def compute_market_view(offer, ref, landed_import):
     }
 
 
+def make_action_recommendation(item):
+    flip_score = item.get("score", 0)
+    market_score = item.get("market_score", 0)
+    seller_score = item.get("seller_confidence_score", 0)
+    ref = item.get("reference")
+    ref_source = ref.get("reference_source") if ref else "Aucune"
+
+    if flip_score >= DEAL_ALERT_MIN_SCORE and seller_score >= MIN_SELLER_CONFIDENCE_FOR_AUTO_DEAL:
+        return "Achat possible après vérification finale : stock réel, scellé, langue, frais, photos et vendeur."
+
+    if flip_score >= DEAL_ALERT_MIN_SCORE and seller_score < MIN_SELLER_CONFIDENCE_FOR_AUTO_DEAL:
+        return "Prix potentiellement bon, mais vendeur trop peu fiable : vérification manuelle obligatoire avant achat."
+
+    if market_score >= MARKET_WATCH_MIN_SCORE and seller_score < MIN_SELLER_CONFIDENCE_FOR_AUTO_DEAL:
+        return "Prix marché correct, mais vendeur risqué ou non confirmé : ne pas acheter automatiquement."
+
+    if market_score >= MARKET_WATCH_MIN_SCORE and ref_source == "Base interne":
+        return "Prix marché correct, mais référence interne : vérifier avec ventes récentes avant achat."
+
+    if market_score >= MARKET_WATCH_MIN_SCORE:
+        return "Prix marché correct : surveiller, vérifier les frais et acheter seulement si le besoin est clair."
+
+    return "Ignorer sauf forte baisse de prix ou meilleure preuve vendeur."
+
+
 def evaluate_offer(offer: dict, ref: dict | None) -> dict:
+    seller_view = compute_seller_confidence(offer)
+
     if offer.get("forced_reject_reason"):
         return reject_result(offer, ref, offer.get("forced_reject_reason"))
 
@@ -1380,6 +1519,10 @@ def evaluate_offer(offer: dict, ref: dict | None) -> dict:
             score = 70
             verdict = "🟡 À vérifier : référence interne, pas encore deal solide"
 
+    if seller_view["seller_confidence_score"] < MIN_SELLER_CONFIDENCE_FOR_AUTO_DEAL and score >= DEAL_ALERT_MIN_SCORE:
+        score = 70
+        verdict = "🟡 Prix intéressant mais vendeur à vérifier"
+
     if gap_to_target is not None and gap_to_target > 0:
         flip_decision = "🔴 PAS POUR FLIP"
     elif score >= DEAL_ALERT_MIN_SCORE:
@@ -1393,7 +1536,7 @@ def evaluate_offer(offer: dict, ref: dict | None) -> dict:
 
     score = max(0, min(100, score))
 
-    return {
+    result = {
         "offer": offer,
         "reference": ref,
         "direction": direction,
@@ -1416,11 +1559,16 @@ def evaluate_offer(offer: dict, ref: dict | None) -> dict:
         "market_range_text": market_view["market_range_text"],
         "market_basis": market_view["market_basis"],
         "negotiation_advice": negotiation_advice,
+        **seller_view,
     }
+
+    result["action_recommended"] = make_action_recommendation(result)
+    return result
 
 
 def proximity_sort_key(item):
     market_score = item.get("market_score", 0)
+    seller_score = item.get("seller_confidence_score", 0)
     flip_score = item.get("score", 0)
     gap = item.get("gap_to_target")
 
@@ -1430,7 +1578,7 @@ def proximity_sort_key(item):
     if gap < 0:
         gap = 0
 
-    return (-market_score, gap, -flip_score)
+    return (-market_score, -seller_score, gap, -flip_score)
 
 
 # =========================
@@ -1507,11 +1655,15 @@ def main():
     rejected = sorted(rejected, key=lambda x: x["offer"].get("price_chf", 999999))
     references = sorted(references, key=lambda x: x["score"], reverse=True)
 
-    good_deals = [x for x in evaluated if x["score"] >= DEAL_ALERT_MIN_SCORE]
+    good_deals = [
+        x for x in evaluated
+        if x["score"] >= DEAL_ALERT_MIN_SCORE
+        and x["seller_confidence_score"] >= MIN_SELLER_CONFIDENCE_FOR_AUTO_DEAL
+    ]
 
     watch_deals = [
         x for x in evaluated
-        if x["score"] < DEAL_ALERT_MIN_SCORE
+        if x not in good_deals
         and (
             x["score"] >= WATCH_MIN_SCORE
             or x["market_score"] >= MARKET_WATCH_MIN_SCORE
@@ -1526,20 +1678,21 @@ def main():
     export_deals = [x for x in good_deals if x["direction"] == "EXPORT_CH"]
     import_deals = [x for x in good_deals if x["direction"] == "IMPORT_TO_CH"]
     market_ok = [x for x in evaluated if x["market_score"] >= MARKET_WATCH_MIN_SCORE]
+    low_seller_watch = [x for x in watch_deals if x["seller_confidence_score"] < MIN_SELLER_CONFIDENCE_FOR_AUTO_DEAL]
 
     send_telegram(
-        f"""🔎 DEAL HUNTER AI — UNIVERSAL DEAL ENGINE V6.9
+        f"""🔎 DEAL HUNTER AI — UNIVERSAL DEAL ENGINE V6.10
 
 Statut :
-Moteur multi-sources activé avec double décision.
+Moteur multi-sources activé avec confiance vendeur.
 
-Améliorations V6.9 :
-Décision FLIP séparée de décision MARCHÉ.
-Prix max flip conservé.
-Prix rendu Suisse estimé ajouté.
-Prix marché acceptable ajouté.
-Jumbo / oversized / giant rejetés.
-Les offres correctes au prix marché ne sont plus confondues avec des deals de flip.
+Améliorations V6.10 :
+Score confiance vendeur ajouté.
+Risque vendeur / plateforme ajouté.
+Action recommandée ajoutée.
+eBay inconnu = achat manuel obligatoire.
+Les prix marché corrects sont séparés des vrais deals flip.
+Messages Telegram réduits.
 
 Sources :
 {chr(10).join(source_status)}
@@ -1568,6 +1721,9 @@ Deals solides flip :
 Prix marché corrects :
 {len(market_ok)}
 
+Alertes avec vendeur faible :
+{len(low_seller_watch)}
+
 Pistes non retenues :
 {len(near_misses)}
 
@@ -1582,6 +1738,9 @@ Pays SerpApi :
 
 Seuil alerte flip :
 {DEAL_ALERT_MIN_SCORE}/100
+
+Seuil confiance vendeur auto :
+{MIN_SELLER_CONFIDENCE_FOR_AUTO_DEAL}/100
 
 Profit minimal flip voulu :
 {MIN_PROFIT_CHF} CHF
@@ -1601,8 +1760,6 @@ Heure :
         for item in good_deals[:MAX_DEAL_MESSAGES]:
             offer = item["offer"]
             ref = item["reference"]
-            swiss = ref.get("swiss_range")
-            swiss_text = f"{swiss[0]}–{swiss[1]} CHF" if swiss else "Non calibré"
 
             send_telegram(
                 f"""🚨 DEAL HUNTER AI — DEAL FLIP SOLIDE
@@ -1613,17 +1770,14 @@ Décision flip :
 Décision marché :
 {item['market_decision']}
 
-Verdict :
-{item['verdict']}
+Confiance vendeur :
+{item['seller_confidence_label']} — {item['seller_confidence_score']}/100
 
-Score flip :
-{item['score']}/100
+Risque vendeur :
+{item['seller_risk']}
 
-Score marché :
-{item['market_score']}/100
-
-Direction :
-{item['direction_label']}
+Action recommandée :
+{item['action_recommended']}
 
 Offre :
 {offer.get('title')}
@@ -1640,55 +1794,34 @@ Prix max flip :
 Prix marché effectif :
 {item.get('market_effective_price')} CHF
 
-Base marché :
-{item.get('market_basis')}
-
 Fourchette marché :
 {item.get('market_range_text')}
-
-Écart marché :
-{item.get('market_gap_text')}
-
-Négociation :
-{item.get('negotiation_advice')}
 
 Source :
 {offer.get('source')}
 
-Pays vendeur détecté :
+Pays vendeur :
 {offer.get('seller_country')}
 
-Référence marché :
+Référence :
 {ref.get('catalog_name')}
 
 Source référence :
 {ref.get('reference_source')}
 
-Prix référence :
-{ref.get('main_chf')} CHF
-
-Marché suisse estimé :
-{swiss_text}
-
 Profit flip estimé :
 {item['profit']} CHF
 
-ROI flip estimé :
+ROI flip :
 {item['roi']} %
 
-Raison :
-{item.get('reason') or 'Critères atteints'}
-
-Lien offre :
+Lien :
 {offer.get('url')}
-
-Lien référence :
-{ref.get('url')}
 """
             )
     else:
         send_telegram(
-            "⚪ Aucun deal flip solide détecté. Le bot affiche maintenant les prix marché corrects séparément."
+            "⚪ Aucun deal flip solide détecté. Le bot affiche les prix marché corrects et la confiance vendeur."
         )
 
     if watch_deals:
@@ -1702,28 +1835,26 @@ Lien référence :
                 f"""— {offer.get('title')}
 Décision flip : {item['flip_decision']}
 Décision marché : {item['market_decision']}
-Score flip : {item['score']}/100
-Score marché : {item['market_score']}/100
+Confiance vendeur : {item['seller_confidence_label']} — {item['seller_confidence_score']}/100
+Risque : {item['seller_risk']}
+Action : {item['action_recommended']}
 Prix actuel : {offer.get('price_chf')} CHF
 Prix max flip : {item.get('target_buy_price')} CHF
 Écart flip : {item.get('gap_text')}
 Prix marché effectif : {item.get('market_effective_price')} CHF
-Base marché : {item.get('market_basis')}
 Fourchette marché : {item.get('market_range_text')}
-Écart marché : {item.get('market_gap_text')}
 Source : {offer.get('source')}
 Pays vendeur : {offer.get('seller_country')}
 Référence : {ref.get('catalog_name')}
 Source référence : {ref.get('reference_source')}
 Profit flip estimé : {item['profit']} CHF
 ROI flip : {item['roi']} %
-Raison : {item.get('reason') or 'Prix marché à vérifier'}
 Lien : {offer.get('url')}
 """
             )
 
         send_telegram(
-            "🟡 DEAL HUNTER AI — À SURVEILLER / PRIX MARCHÉ CORRECT\n\n"
+            "🟡 DEAL HUNTER AI — À SURVEILLER / PRIX MARCHÉ / CONFIANCE VENDEUR\n\n"
             + "\n".join(lines)
         )
 
@@ -1733,28 +1864,19 @@ Lien : {offer.get('url')}
         for item in near_misses[:MAX_NEAR_MISS_MESSAGES]:
             offer = item["offer"]
             ref = item["reference"]
-            ref_name = ref.get("catalog_name") if ref else "Aucune référence"
-            ref_source = ref.get("reference_source") if ref else "Aucune"
-
             reason = item.get("reason") or "Score trop faible / marge insuffisante"
 
             lines.append(
                 f"""— {offer.get('title')}
 Décision flip : {item['flip_decision']}
 Décision marché : {item['market_decision']}
-Score flip : {item['score']}/100
-Score marché : {item['market_score']}/100
+Confiance vendeur : {item['seller_confidence_label']} — {item['seller_confidence_score']}/100
 Prix actuel : {offer.get('price_chf')} CHF
-Prix max flip : {item.get('target_buy_price')} CHF
-Écart flip : {item.get('gap_text')}
 Prix marché effectif : {item.get('market_effective_price')} CHF
 Fourchette marché : {item.get('market_range_text')}
 Source : {offer.get('source')}
 Pays vendeur : {offer.get('seller_country')}
-Référence : {ref_name}
-Source référence : {ref_source}
-Profit flip estimé : {item['profit']} CHF
-ROI flip : {item['roi']} %
+Référence : {ref.get('catalog_name')}
 Pourquoi non retenu :
 {reason}
 Lien : {offer.get('url')}
@@ -1775,6 +1897,7 @@ Lien : {offer.get('url')}
 Prix : {offer.get('price_chf')} CHF
 Source : {offer.get('source')}
 Pays vendeur : {offer.get('seller_country')}
+Confiance vendeur : {item.get('seller_confidence_label')} — {item.get('seller_confidence_score')}/100
 Décision : {item.get('flip_decision')}
 Raison : {item.get('reason') or item.get('verdict')}
 """
