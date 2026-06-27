@@ -1844,7 +1844,7 @@ def main():
 Statut :
 Moteur multi-sources activé avec preuve de marché et boutons Google Sheets.
 
-Améliorations V7.2 :
+Améliorations V8.0 :
 Score confiance vendeur conservé.
 Preuve de ventes réelles ajoutée.
 PriceCharting ne peut plus valider seul un deal solide.
