@@ -392,9 +392,7 @@ MEDIUM_TRUST_TERMS = [
     "japan2uk",
     "stockx",
     "cardmarket",
-    "ebay -",
 ]
-
 
 # =========================
 # OUTILS
