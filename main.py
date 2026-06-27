@@ -4,9 +4,10 @@ import time
 import base64
 import imaplib
 import email
+import hashlib
 from email.header import decode_header
 from datetime import datetime
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urlencode
 
 import requests
 from bs4 import BeautifulSoup
@@ -28,7 +29,8 @@ EBAY_CLIENT_SECRET = os.getenv("EBAY_CLIENT_SECRET")
 EMAIL_IMAP_SERVER = os.getenv("EMAIL_IMAP_SERVER") or os.getenv("DEAL_IMAP_SERVER")
 EMAIL_ADDRESS = os.getenv("EMAIL_ADDRESS") or os.getenv("DEAL_EMAIL_ADDRESS")
 EMAIL_APP_PASSWORD = os.getenv("EMAIL_APP_PASSWORD") or os.getenv("DEAL_EMAIL_APP_PASSWORD")
-
+GSHEET_ACTION_WEBHOOK_URL = os.getenv("GSHEET_ACTION_WEBHOOK_URL")
+GSHEET_ACTION_TOKEN = os.getenv("GSHEET_ACTION_TOKEN")
 
 def env_float(name, default):
     value = os.getenv(name)
