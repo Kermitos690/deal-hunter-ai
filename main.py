@@ -657,19 +657,23 @@ def send_static_telegram_menu():
         ]
     }
 
-    send_telegram(
-        """📌 DEAL HUNTER CARDS — MENU PRIVÉ
+send_telegram(
+    """📌 DEAL HUNTER AI — DASHBOARD PRIVÉ
 
-Utilise ce menu pour retrouver :
-🟡 tes annonces à vérifier
-✅ tes achats
-💰 tes reventes
+Ton dashboard privé te permet de suivre :
+
+🔍 les annonces à vérifier
+✅ les annonces achetées
+🚫 les annonces indisponibles
 🗑️ les annonces ignorées
+📊 les opportunités détectées
 📘 le tutoriel
 
-Ce menu ouvre ton dashboard privé.""",
-        reply_markup=buttons,
-    )
+Le service est actuellement en bêta gratuite.
+
+⚠️ Vérifie toujours l’annonce, le vendeur, les frais, l’authenticité, le scellage et les ventes réelles avant d’acheter.""",
+    reply_markup=buttons,
+)
 
 def item_category(item):
     offer = item.get("offer", {})
