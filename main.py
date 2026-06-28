@@ -657,6 +657,25 @@ def send_static_telegram_menu():
         ]
     }
 
+dashboard_url = os.getenv("GSHEET_ACTION_WEBHOOK_URL", "").strip()
+dashboard_token = os.getenv("GSHEET_ACTION_TOKEN", "").strip()
+
+if dashboard_url and dashboard_token:
+    dashboard_link = f"{dashboard_url}?action=MENU&token={dashboard_token}"
+else:
+    dashboard_link = dashboard_url or ""
+
+buttons = {
+    "inline_keyboard": [
+        [
+            {
+                "text": "📌 Ouvrir le dashboard privé",
+                "url": dashboard_link
+            }
+        ]
+    ]
+} if dashboard_link else None
+
 send_telegram(
     """📌 DEAL HUNTER AI — DASHBOARD PRIVÉ
 
