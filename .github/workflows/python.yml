@@ -33,7 +33,7 @@ on:
         default: ""
 
   schedule:
-  - cron: "*/15 * * * *"
+    - cron: "*/15 * * * *"
 
 concurrency:
   group: deal-hunter-ai
@@ -57,6 +57,10 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
+
+      - name: Validate Python sources
+        run: |
+          python -m py_compile main.py manual_value.py market_evidence.py runtime_compat.py
 
       - name: Run automatic Deal Hunter AI
         if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.mode != 'manual' }}
@@ -100,7 +104,7 @@ jobs:
           MIN_PROFIT_CHF: ${{ secrets.MIN_PROFIT_CHF }}
           PRICECHARTING_SLEEP_SECONDS: ${{ secrets.PRICECHARTING_SLEEP_SECONDS }}
         run: |
-          python main.py
+          python runtime_compat.py auto
 
       - name: Run manual value analysis
         if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.mode == 'manual' }}
@@ -131,4 +135,4 @@ jobs:
           MANUAL_SELLER_COUNTRY: ${{ github.event.inputs.seller_country }}
           MANUAL_URL: ${{ github.event.inputs.url }}
         run: |
-          python manual_value.py
+          python runtime_compat.py manual
