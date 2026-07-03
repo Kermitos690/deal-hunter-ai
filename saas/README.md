@@ -85,9 +85,11 @@ Automatisation :
 
 Dans l’éditeur SQL Supabase, exécuter dans l’ordre :
 
-1. `supabase/schema.sql`
-2. `supabase/policies.sql`
-3. `supabase/seed.sql` (optionnel)
+1. Installez la CLI Supabase puis lancez `supabase init` si `supabase/config.toml` n'existe pas.
+2. Liez le projet hébergé avec `supabase link --project-ref <project-ref>`.
+3. Appliquez `supabase/migrations/20260703170000_initial_schema.sql` et
+   `supabase/migrations/20260703170100_rls_policies.sql` avec `supabase db push`.
+4. `supabase/seed.sql` reste optionnel pour ajouter des comparables de démonstration.
 
 Le client `serviceDb()` utilise la service role uniquement dans les routes
 serveur. Elle n’est jamais importée dans un composant client.

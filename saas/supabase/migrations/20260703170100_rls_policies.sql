@@ -1,3 +1,4 @@
+-- Deal Hunter SaaS: row-level isolation policies.
 alter table public.users enable row level security;
 alter table public.radars enable row level security;
 alter table public.products enable row level security;
