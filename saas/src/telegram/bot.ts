@@ -3,8 +3,14 @@ import { serviceDb } from "@/lib/db/server";
 import { enforcePlanLimits } from "@/plans/limits";
 import { runRadarScan } from "@/lib/scans/run-radar-scan";
 import { parseAuctionResponse } from "@/telegram/auction-response";
+import { createSessionToken } from "@/lib/security/session";
 
 const steps = ["category", "brand", "budget", "condition", "source", "margin", "frequency"] as const;
+
+function dashboardLoginUrl(telegramId: string) {
+  const token = encodeURIComponent(createSessionToken(telegramId, 15 * 60));
+  return `${process.env.APP_BASE_URL}/api/auth/telegram/session?token=${token}`;
+}
 
 async function userFor(ctx: any) {
   const telegramId = String(ctx.from.id);
@@ -57,7 +63,7 @@ export function createBot() {
       { reply_markup: { inline_keyboard: [
         [{ text: "➕ Créer un radar", callback_data: "create_radar" }],
         [{ text: "📡 Mes radars", callback_data: "list_radars" }],
-        [{ text: "🌐 Dashboard", url: `${process.env.APP_BASE_URL}/login` }]
+        [{ text: "🌐 Dashboard", url: dashboardLoginUrl(String(ctx.from.id)) }]
       ] } }
     );
   });
@@ -96,7 +102,7 @@ export function createBot() {
     const { data } = await serviceDb().from("deal_scores").select("total_score,recommendation,estimated_net_profit").eq("user_id", user.id).order("total_score", { ascending: false }).limit(10);
     await ctx.reply(data?.length ? data.map((d: any) => `⭐ ${d.total_score} — ${d.recommendation} — +${d.estimated_net_profit} CHF`).join("\n") : "Aucun deal.");
   });
-  bot.command("settings", (ctx) => ctx.reply(`${process.env.APP_BASE_URL}/dashboard/settings`));
+  bot.command("settings", (ctx) => ctx.reply(dashboardLoginUrl(String(ctx.from.id))));
   bot.command("stop", async (ctx) => {
     const user = await userFor(ctx);
     await serviceDb().from("users").update({ alerts_enabled: false }).eq("id", user.id);
