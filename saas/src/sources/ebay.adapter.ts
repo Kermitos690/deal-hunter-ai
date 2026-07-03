@@ -1,5 +1,15 @@
 import type { ProductCandidate, SourceAdapter } from "@/types";
 
+export function ebayConditionGrade(condition?: string) {
+  const value = (condition ?? "").toLowerCase();
+  if (/(parts|repair|not working|pour pièces|defekt)/.test(value)) return "REPAIR";
+  if (/(new|neuf|neu|nuovo)/.test(value)) return "NEW";
+  if (/(very good|excellent|comme neuf|sehr gut)/.test(value)) return "A";
+  if (/(good|used|pre-owned|occasion|gebraucht)/.test(value)) return "B";
+  if (/(acceptable|fair|poor|usé)/.test(value)) return "C";
+  return "UNKNOWN";
+}
+
 async function accessToken() {
   const id = process.env.EBAY_CLIENT_ID;
   const secret = process.env.EBAY_CLIENT_SECRET;
@@ -22,23 +32,22 @@ export const ebayAdapter: SourceAdapter = {
   async scan(radar) {
     if (!this.enabled) return [];
     const token = await accessToken();
-    const query = [...radar.brands, ...radar.models, ...radar.include_keywords, radar.category]
-      .filter(Boolean)
-      .join(" ");
+    const searches = radar.brands.length
+      ? radar.brands.map((brand) => [brand, ...radar.models, ...radar.include_keywords, radar.category].filter(Boolean).join(" "))
+      : [[...radar.models, ...radar.include_keywords, radar.category].filter(Boolean).join(" ")];
     const marketplaces = (process.env.EBAY_MARKETPLACES ?? "EBAY_CH,EBAY_FR,EBAY_DE,EBAY_IT,EBAY_GB,EBAY_US")
       .split(",").map((value) => value.trim()).filter(Boolean);
-    const results: ProductCandidate[] = [];
-    for (const marketplace of marketplaces) {
+    const resultGroups = await Promise.all(searches.flatMap((query) => marketplaces.map(async (marketplace) => {
       const response = await fetch(
         `https://api.ebay.com/buy/browse/v1/item_summary/search?q=${encodeURIComponent(query)}&limit=50`,
         { headers: { Authorization: `Bearer ${token}`, "X-EBAY-C-MARKETPLACE-ID": marketplace } }
       );
       if (!response.ok) {
         console.warn(`Recherche eBay ${marketplace}: ${response.status}`);
-        continue;
+        return [];
       }
       const body = await response.json();
-      results.push(...(body.itemSummaries ?? []).map(
+      return (body.itemSummaries ?? []).map(
       (item: Record<string, any>): ProductCandidate => ({
         source: "ebay",
         sourceItemId: String(item.itemId),
@@ -48,7 +57,7 @@ export const ebayAdapter: SourceAdapter = {
         buyNowPrice: Number(item.price?.value ?? 0),
         shippingCost: Number(item.shippingOptions?.[0]?.shippingCost?.value ?? 0),
         conditionText: item.condition,
-        conditionGrade: "UNKNOWN",
+        conditionGrade: ebayConditionGrade(item.condition),
         sellerName: item.seller?.username,
         sellerRating: String(item.seller?.feedbackPercentage ?? ""),
         itemCountry: item.itemLocation?.country,
@@ -57,8 +66,9 @@ export const ebayAdapter: SourceAdapter = {
         imageUrls: [item.image?.imageUrl, ...(item.additionalImages ?? []).map((x: any) => x.imageUrl)].filter(Boolean),
         rawPayload: { ...item, marketplace }
       })
-    ));
-    }
+    );
+    })));
+    const results = resultGroups.flat();
     return [...new Map(results.map((item) => [item.sourceItemId, item])).values()];
   }
 };
