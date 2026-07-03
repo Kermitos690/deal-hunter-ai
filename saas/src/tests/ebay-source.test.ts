@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ebayConditionGrade, inferRadarBrand } from "@/sources/ebay.adapter";
+import { ebayConditionGrade, inferRadarBrand, isRelevantEbayListing } from "@/sources/ebay.adapter";
 
 describe("source eBay", () => {
   it("normalise les états eBay", () => {
@@ -11,5 +11,10 @@ describe("source eBay", () => {
   it("déduit la marque du titre sans dépendre des accents", () => {
     expect(inferRadarBrand("Montre OMEGA Seamaster vintage", ["Oméga", "TAG Heuer"]))
       .toBe("Oméga");
+  });
+
+  it("écarte les accessoires d’un radar de montres", () => {
+    expect(isRelevantEbayListing("Cadran Omega Seamaster ancien", "Montres")).toBe(false);
+    expect(isRelevantEbayListing("Montre Omega Seamaster automatique", "Montres")).toBe(true);
   });
 });

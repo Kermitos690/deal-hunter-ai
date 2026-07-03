@@ -9,6 +9,7 @@ export default async function HealthPage() {
     ["Base de données","Connectée",true],
     ["Bot Telegram",process.env.TELEGRAM_BOT_TOKEN?"Configuré":"Manquant",Boolean(process.env.TELEGRAM_BOT_TOKEN)],
     ["Cron",process.env.CRON_SECRET?"Configuré":"Manquant",Boolean(process.env.CRON_SECRET)],
+    ["Stripe",process.env.STRIPE_SECRET_KEY&&process.env.STRIPE_WEBHOOK_SECRET?"Configuré":"À configurer",Boolean(process.env.STRIPE_SECRET_KEY&&process.env.STRIPE_WEBHOOK_SECRET)],
     ["Dernier scan",lastScan ? `${lastScan.status} — ${new Date(lastScan.started_at).toLocaleString("fr-CH")}`:"Aucun",Boolean(lastScan)]
   ];
   const missing=missingEnvironmentVariables();

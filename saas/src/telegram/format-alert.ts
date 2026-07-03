@@ -18,6 +18,8 @@ export function formatTelegramAlert(candidate: ProductCandidate, score: DealScor
 🟢 Bénéfice net estimé : ${money(score.estimatedNetProfit)}
 📊 ROI estimé : ${score.estimatedRoiPercent.toFixed(1)} %
 ⭐ Score : ${score.totalScore}/100
+🔎 Confiance marché : ${score.marketConfidence} (${score.comparableCount} comparables)
+🧮 Modèle : ${score.scoringVersion}
 
 🧠 Verdict : ${score.recommendation}
 

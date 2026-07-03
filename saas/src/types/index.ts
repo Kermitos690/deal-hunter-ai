@@ -10,7 +10,9 @@ export interface AppUser {
   display_name: string;
   role: "user" | "admin";
   plan: Plan;
+  status: "active" | "suspended";
   alerts_enabled: boolean;
+  stripe_customer_id?: string | null;
 }
 
 export interface Radar {
@@ -79,6 +81,7 @@ export interface MarketEstimate {
   high: number;
   currency: string;
   confidence: MarketConfidence;
+  comparableCount: number;
   comparableSources: string[];
   notes: string[];
 }
@@ -95,6 +98,9 @@ export interface DealScore {
   estimatedNetProfit: number;
   estimatedRoiPercent: number;
   recommendation: Recommendation;
+  scoringVersion: "v2";
+  marketConfidence: MarketConfidence;
+  comparableCount: number;
   reasons: string[];
   warnings: string[];
 }

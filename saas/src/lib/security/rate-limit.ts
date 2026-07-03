@@ -1,13 +1,10 @@
-const buckets = new Map<string, { count: number; resetAt: number }>();
+import { serviceDb } from "@/lib/db/server";
 
-export function rateLimit(key: string, limit = 20, windowMs = 60_000) {
-  const now = Date.now();
-  const bucket = buckets.get(key);
-  if (!bucket || bucket.resetAt <= now) {
-    buckets.set(key, { count: 1, resetAt: now + windowMs });
-    return true;
-  }
-  if (bucket.count >= limit) return false;
-  bucket.count += 1;
-  return true;
+export async function rateLimit(key: string, limit = 20, windowSeconds = 60) {
+  const { data, error } = await serviceDb().rpc("consume_rate_limit", {
+    p_key: key,
+    p_limit: limit,
+    p_window_seconds: windowSeconds
+  });
+  return !error && data === true;
 }

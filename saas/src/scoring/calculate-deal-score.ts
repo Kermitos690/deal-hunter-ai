@@ -52,13 +52,16 @@ export function calculateDealScore(
     urgencyScore = 55;
   }
 
-  const totalScore = clamp(
+  const rawTotalScore = clamp(
     marginScore * 0.4 +
       liquidityScore * 0.2 +
       riskScore * 0.2 +
       conditionScore * 0.12 +
       urgencyScore * 0.08
   );
+  const totalScore = market.confidence === "LOW"
+    ? Math.min(rawTotalScore, 54)
+    : rawTotalScore;
   const recommendation =
     totalScore >= 85
       ? "BUY"
@@ -90,6 +93,9 @@ export function calculateDealScore(
     estimatedNetProfit: Number(estimatedNetProfit.toFixed(2)),
     estimatedRoiPercent: Number(roi.toFixed(2)),
     recommendation,
+    scoringVersion: "v2",
+    marketConfidence: market.confidence,
+    comparableCount: market.comparableCount,
     reasons,
     warnings
   };

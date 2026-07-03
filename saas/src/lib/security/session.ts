@@ -48,10 +48,11 @@ export async function currentUser(): Promise<AppUser | null> {
   if (!telegramId) return null;
   const { data } = await serviceDb()
     .from("users")
-    .select("id,telegram_id,email,display_name,role,plan,alerts_enabled")
+    .select("id,telegram_id,email,display_name,role,plan,status,alerts_enabled,stripe_customer_id")
     .eq("telegram_id", telegramId)
     .maybeSingle();
-  return (data as AppUser | null) ?? null;
+  if (!data || data.status === "suspended") return null;
+  return data as AppUser;
 }
 
 export async function requireUser() {

@@ -9,6 +9,13 @@ export function inferRadarBrand(title: string, brands: string[]) {
   return brands.find((brand) => normalizedTitle.includes(searchable(brand)));
 }
 
+export function isRelevantEbayListing(title: string, category: string) {
+  const normalizedCategory = searchable(category);
+  if (!/(montre|watch|uhr)/.test(normalizedCategory)) return true;
+  const value = searchable(title);
+  return !/(bracelet|watch band|watch strap|cadran|dial only|boite vide|empty box|manual only|bezel only|movement only)/.test(value);
+}
+
 export function ebayConditionGrade(condition?: string) {
   const value = (condition ?? "").toLowerCase();
   if (/(parts|repair|not working|pour pièces|defekt)/.test(value)) return "REPAIR";
@@ -56,7 +63,9 @@ export const ebayAdapter: SourceAdapter = {
         return [];
       }
       const body = await response.json();
-      return (body.itemSummaries ?? []).map(
+      return (body.itemSummaries ?? [])
+      .filter((item: Record<string, any>) => isRelevantEbayListing(String(item.title), radar.category))
+      .map(
       (item: Record<string, any>): ProductCandidate => ({
         source: "ebay",
         sourceItemId: String(item.itemId),

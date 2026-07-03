@@ -56,6 +56,22 @@ export function createBot() {
   if (!token) throw new Error("TELEGRAM_BOT_TOKEN manquant.");
   const bot = new Telegraf(token);
 
+  bot.use(async (ctx, next) => {
+    const telegramId = ctx.from?.id ? String(ctx.from.id) : null;
+    if (telegramId) {
+      const { data } = await serviceDb()
+        .from("users")
+        .select("status")
+        .eq("telegram_id", telegramId)
+        .maybeSingle();
+      if (data?.status === "suspended") {
+        await ctx.reply("⛔ Compte suspendu. Contacte l’administrateur.");
+        return;
+      }
+    }
+    return next();
+  });
+
   bot.start(async (ctx) => {
     const user = await userFor(ctx);
     await ctx.reply(

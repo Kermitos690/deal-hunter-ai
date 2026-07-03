@@ -24,7 +24,11 @@ const schema = z.object({
   EMAIL_IMAP_PORT: z.string().default("993"),
   EMAIL_ADDRESS: z.string().optional(),
   EMAIL_APP_PASSWORD: z.string().optional(),
-  EMAIL_ALLOWED_SENDERS: z.string().optional()
+  EMAIL_ALLOWED_SENDERS: z.string().optional(),
+  STRIPE_SECRET_KEY: z.string().optional(),
+  STRIPE_WEBHOOK_SECRET: z.string().optional(),
+  STRIPE_PRO_PRICE_ID: z.string().optional(),
+  STRIPE_BUSINESS_PRICE_ID: z.string().optional()
 });
 
 export function env() {
