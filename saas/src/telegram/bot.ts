@@ -165,7 +165,7 @@ export function createBot() {
       user_id: user.id,
       name,
       category: payload.category,
-      brands: [payload.brand],
+      brands: String(payload.brand).split(/[,;\n]+/).map((brand) => brand.trim()).filter(Boolean),
       max_buy_price: Number(payload.budget),
       accepted_conditions: String(payload.condition).toUpperCase().split(/[, ]+/),
       sources: [String(payload.source).toLowerCase()],

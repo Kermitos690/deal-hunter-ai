@@ -75,18 +75,23 @@ export const mockCandidates: ProductCandidate[] = [
   }
 ];
 
+function searchable(value: string) {
+  return value.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase().trim();
+}
+
 function matches(radar: Radar, item: ProductCandidate) {
-  const text = `${item.title} ${item.brand ?? ""} ${item.model ?? ""}`.toLowerCase();
-  if (radar.category && !text.includes(radar.category.toLowerCase())) {
-    if (item.category?.toLowerCase() !== radar.category.toLowerCase()) return false;
+  const text = searchable(`${item.title} ${item.brand ?? ""} ${item.model ?? ""}`);
+  const category = searchable(radar.category);
+  if (category && !text.includes(category)) {
+    if (searchable(item.category ?? "") !== category) return false;
   }
-  if (radar.brands.length && !radar.brands.some((brand) => text.includes(brand.toLowerCase())))
+  if (radar.brands.length && !radar.brands.some((brand) => text.includes(searchable(brand))))
     return false;
-  if (radar.models.length && !radar.models.some((model) => text.includes(model.toLowerCase())))
+  if (radar.models.length && !radar.models.some((model) => text.includes(searchable(model))))
     return false;
-  if (radar.include_keywords.length && !radar.include_keywords.every((word) => text.includes(word.toLowerCase())))
+  if (radar.include_keywords.length && !radar.include_keywords.every((word) => text.includes(searchable(word))))
     return false;
-  if (radar.exclude_keywords.some((word) => text.includes(word.toLowerCase()))) return false;
+  if (radar.exclude_keywords.some((word) => text.includes(searchable(word)))) return false;
   return true;
 }
 
