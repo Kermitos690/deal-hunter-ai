@@ -1,5 +1,14 @@
 import type { ProductCandidate, SourceAdapter } from "@/types";
 
+function searchable(value: string) {
+  return value.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase();
+}
+
+export function inferRadarBrand(title: string, brands: string[]) {
+  const normalizedTitle = searchable(title);
+  return brands.find((brand) => normalizedTitle.includes(searchable(brand)));
+}
+
 export function ebayConditionGrade(condition?: string) {
   const value = (condition ?? "").toLowerCase();
   if (/(parts|repair|not working|pour pièces|defekt)/.test(value)) return "REPAIR";
@@ -52,6 +61,8 @@ export const ebayAdapter: SourceAdapter = {
         source: "ebay",
         sourceItemId: String(item.itemId),
         title: String(item.title),
+        brand: inferRadarBrand(String(item.title), radar.brands),
+        category: radar.category,
         priceAmount: Number(item.price?.value ?? 0),
         priceCurrency: String(item.price?.currency ?? "CHF"),
         buyNowPrice: Number(item.price?.value ?? 0),
