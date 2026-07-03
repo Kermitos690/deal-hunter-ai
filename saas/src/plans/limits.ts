@@ -9,7 +9,7 @@ export const PLAN_LIMITS: Record<
   business: {
     activeRadars: Number.MAX_SAFE_INTEGER,
     alertsPerDay: Number.MAX_SAFE_INTEGER,
-    minScanMinutes: 15,
+    minScanMinutes: 30,
     historyDays: 365
   }
 };

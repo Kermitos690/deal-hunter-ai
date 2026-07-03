@@ -15,6 +15,30 @@ function candidateAllowed(candidate: ProductCandidate, radar: Radar) {
   return true;
 }
 
+function comparableListings(candidate: ProductCandidate, candidates: ProductCandidate[]) {
+  const brand = candidate.brand?.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase();
+  return candidates
+    .filter((item) => item.sourceItemId !== candidate.sourceItemId)
+    .filter((item) => {
+      const itemBrand = item.brand?.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase();
+      return brand ? itemBrand === brand : item.category === candidate.category;
+    })
+    .filter((item) =>
+      item.priceAmount >= candidate.priceAmount * 0.25 &&
+      item.priceAmount <= candidate.priceAmount * 4
+    )
+    .sort((a, b) =>
+      Math.abs(a.priceAmount - candidate.priceAmount) -
+      Math.abs(b.priceAmount - candidate.priceAmount)
+    )
+    .slice(0, 40)
+    .map((item) => ({
+      sold_price: item.priceAmount,
+      currency: item.priceCurrency,
+      source: `${item.source}_active_listing`
+    }));
+}
+
 export async function runRadarScan(radarId: string, ownerId?: string) {
   const db = serviceDb();
   let query = db.from("radars").select("*, users(*)").eq("id", radarId);
@@ -40,6 +64,14 @@ export async function runRadarScan(radarId: string, ownerId?: string) {
     );
     const candidates = candidateGroups.flat();
     candidatesFound = candidates.length;
+    const convertedCandidates: ProductCandidate[] = [];
+    for (const candidate of candidates) {
+      try {
+        convertedCandidates.push(await candidateInChf(candidate));
+      } catch (fxError) {
+        console.warn("Candidate ignoré, conversion CHF impossible:", fxError);
+      }
+    }
     const since = new Date(Date.now() - 86_400_000).toISOString();
     const { count: alertsToday } = await db
       .from("alerts")
@@ -48,14 +80,7 @@ export async function runRadarScan(radarId: string, ownerId?: string) {
       .gte("created_at", since);
     let remaining = Math.max(0, PLAN_LIMITS[user.plan].alertsPerDay - (alertsToday ?? 0));
 
-    for (const rawCandidate of candidates) {
-      let candidate: ProductCandidate;
-      try {
-        candidate = await candidateInChf(rawCandidate);
-      } catch (fxError) {
-        console.warn("Candidate ignoré, conversion CHF impossible:", fxError);
-        continue;
-      }
+    for (const candidate of convertedCandidates) {
       if (!candidateAllowed(candidate, radar) || remaining <= 0) continue;
       const normalizedUrl = normalizeUrl(candidate.productUrl);
       const fingerprint = productFingerprint(candidate);
@@ -115,8 +140,11 @@ export async function runRadarScan(radarId: string, ownerId?: string) {
         .select("sold_price,currency,source")
         .eq("category", candidate.category ?? radar.category);
       if (candidate.brand) comparableQuery = comparableQuery.eq("brand", candidate.brand);
-      const { data: comparables } = await comparableQuery.limit(20);
-      const market = estimateMarketValue(candidate, radar, comparables ?? []);
+      const { data: verifiedComparables } = await comparableQuery.limit(20);
+      const market = estimateMarketValue(candidate, radar, [
+        ...(verifiedComparables ?? []),
+        ...comparableListings(candidate, convertedCandidates)
+      ]);
       const score = calculateDealScore(candidate, radar, market);
       if (
         score.totalScore < radar.min_score ||
@@ -142,6 +170,9 @@ export async function runRadarScan(radarId: string, ownerId?: string) {
             estimated_net_profit: score.estimatedNetProfit,
             estimated_roi_percent: score.estimatedRoiPercent,
             recommendation: score.recommendation,
+            scoring_version: score.scoringVersion,
+            market_confidence: score.marketConfidence,
+            comparable_count: score.comparableCount,
             reasons: score.reasons,
             warnings: score.warnings
           },
@@ -216,15 +247,14 @@ export async function runDueScans() {
     .select("id,user_id")
     .eq("is_active", true)
     .lte("next_scan_at", new Date().toISOString())
-    .limit(50);
+    .order("next_scan_at", { ascending: true })
+    .limit(5);
   if (error) throw error;
-  const results = [];
-  for (const radar of data ?? []) {
+  return Promise.all((data ?? []).map(async (radar) => {
     try {
-      results.push({ id: radar.id, ok: true, ...(await runRadarScan(radar.id, radar.user_id)) });
+      return { id: radar.id, ok: true, ...(await runRadarScan(radar.id, radar.user_id)) };
     } catch (error) {
-      results.push({ id: radar.id, ok: false, error: error instanceof Error ? error.message : "Erreur" });
+      return { id: radar.id, ok: false, error: error instanceof Error ? error.message : "Erreur" };
     }
-  }
-  return results;
+  }));
 }

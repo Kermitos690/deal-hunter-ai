@@ -81,14 +81,20 @@ Automatisation :
 - `ENABLE_RSS_SOURCE=false` et `PUBLIC_FEED_URLS`
 - `ENABLE_EMAIL_ALERTS_SOURCE=false` et les variables IMAP
 
+Facturation Stripe :
+
+- `STRIPE_SECRET_KEY`
+- `STRIPE_WEBHOOK_SECRET`
+- `STRIPE_PRO_PRICE_ID`
+- `STRIPE_BUSINESS_PRICE_ID`
+
 ## 3. Base Supabase
 
 Dans l’éditeur SQL Supabase, exécuter dans l’ordre :
 
 1. Installez la CLI Supabase puis lancez `supabase init` si `supabase/config.toml` n'existe pas.
 2. Liez le projet hébergé avec `supabase link --project-ref <project-ref>`.
-3. Appliquez `supabase/migrations/20260703170000_initial_schema.sql` et
-   `supabase/migrations/20260703170100_rls_policies.sql` avec `supabase db push`.
+3. Appliquez toutes les migrations versionnées avec `supabase db push`.
 4. `supabase/seed.sql` reste optionnel pour ajouter des comparables de démonstration.
 
 Le client `serviceDb()` utilise la service role uniquement dans les routes
@@ -99,6 +105,23 @@ L’isolation est appliquée deux fois :
 - toutes les requêtes applicatives filtrent `user_id` ;
 - Supabase RLS empêche un utilisateur Auth de lire ou modifier les données
   appartenant à un autre compte.
+
+## 3.1 Administration et facturation
+
+La page `/admin` permet à l’administrateur principal de consulter les comptes,
+leurs radars et leur abonnement, puis de changer un plan ou suspendre un compte.
+Chaque modification est enregistrée dans `admin_logs`.
+
+Stripe utilise Checkout en mode abonnement, le portail client et le webhook
+`/api/billing/webhook`. Les changements de plan payant sont accordés uniquement
+par les événements Stripe signés. Le webhook doit écouter au minimum :
+
+- `checkout.session.completed`
+- `customer.subscription.created`
+- `customer.subscription.updated`
+- `customer.subscription.deleted`
+- `invoice.paid`
+- `invoice.payment_failed`
 
 ## 4. Telegram
 
@@ -256,9 +279,8 @@ alertes vers la boîte IMAP dédiée. Aucun scraping agressif n’est inclus.
 ## Limites V1
 
 - taux de change de référence quotidien, pas un taux bancaire temps réel ;
-- comparable manuel ou règle interne seulement ;
-- mémoire du rate limiting locale à chaque instance Vercel ;
-- paiements Stripe préparés par variables et plans, non activés ;
+- comparables actifs eBay et comparables vérifiés, sans garantie de prix vendu ;
+- facturation inactive tant que les clés et Price IDs Stripe ne sont pas fournis ;
 - adaptateurs hors eBay à connecter uniquement avec autorisation ;
 - import CSV retourne les candidats normalisés ; l’interface d’import avancée
   reste à ajouter.
@@ -266,9 +288,8 @@ alertes vers la boîte IMAP dédiée. Aucun scraping agressif n’est inclus.
 ## Priorités suivantes
 
 1. branchement d’un fournisseur de taux de change ;
-2. comparables eBay sold ou fournisseur autorisé ;
+2. comparables de ventes conclues via un fournisseur autorisé ;
 3. file de jobs durable (Supabase Queue/Upstash) ;
-4. rate limiting distribué ;
-5. Stripe Checkout et portail client ;
-6. sources B2B sous contrat ;
-7. tests end-to-end Telegram et Playwright.
+4. tests de charge et supervision de la facturation ;
+5. sources B2B sous contrat ;
+6. tests end-to-end Telegram et Playwright.

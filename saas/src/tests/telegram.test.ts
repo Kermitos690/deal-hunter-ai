@@ -9,7 +9,7 @@ describe("Telegram", () => {
     expect(parseAuctionResponse("x")).toBeNull();
   });
   it("mentionne le risque d’authenticité", () => {
-    const text=formatTelegramAlert(mockCandidates[0],{totalScore:80,marginScore:80,liquidityScore:70,riskScore:70,conditionScore:70,urgencyScore:50,estimatedBuyCost:150,estimatedResalePrice:290,estimatedNetProfit:90,estimatedRoiPercent:60,recommendation:"NEGOTIATE",reasons:["Marge"],warnings:[]});
+    const text=formatTelegramAlert(mockCandidates[0],{totalScore:80,marginScore:80,liquidityScore:70,riskScore:70,conditionScore:70,urgencyScore:50,estimatedBuyCost:150,estimatedResalePrice:290,estimatedNetProfit:90,estimatedRoiPercent:60,recommendation:"NEGOTIATE",scoringVersion:"v2",marketConfidence:"MEDIUM",comparableCount:5,reasons:["Marge"],warnings:[]});
     expect(text).toContain("Authenticité à vérifier");
   });
 });

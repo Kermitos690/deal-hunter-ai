@@ -16,39 +16,35 @@ export function estimateMarketValue(
     .map((item) => item.sold_price)
     .sort((a, b) => a - b);
   if (valid.length) {
-    const median = valid[Math.floor(valid.length / 2)];
+    const trim = valid.length >= 10 ? Math.floor(valid.length * 0.1) : 0;
+    const sample = trim ? valid.slice(trim, valid.length - trim) : valid;
+    const median = sample[Math.floor(sample.length / 2)];
+    const low = sample[Math.floor((sample.length - 1) * 0.25)];
+    const high = sample[Math.floor((sample.length - 1) * 0.75)];
     return {
-      low: valid[0],
+      low,
       median,
-      high: valid[valid.length - 1],
+      high,
       currency: candidate.priceCurrency,
-      confidence: valid.length >= 5 ? "HIGH" : valid.length >= 2 ? "MEDIUM" : "LOW",
+      confidence: sample.length >= 10 ? "HIGH" : sample.length >= 3 ? "MEDIUM" : "LOW",
+      comparableCount: sample.length,
       comparableSources: [...new Set(comparables.map((item) => item.source))],
-      notes: [`${valid.length} comparable(s) manuel(s) ou vérifié(s).`]
+      notes: [`${sample.length} comparable(s), valeurs extrêmes écartées.`]
     };
   }
 
-  const multipliers: Record<string, number> = {
-    NEW: 1.45,
-    A: 1.4,
-    B: 1.55,
-    C: 1.7,
-    REPAIR: 2.0,
-    UNKNOWN: 1.35
-  };
-  const median = Math.round(
-    candidate.priceAmount * multipliers[candidate.conditionGrade ?? "UNKNOWN"]
-  );
+  const median = candidate.priceAmount;
   return {
-    low: Math.round(median * 0.8),
+    low: median,
     median,
-    high: Math.round(median * 1.2),
+    high: median,
     currency: candidate.priceCurrency,
     confidence: "LOW",
+    comparableCount: 0,
     comparableSources: [],
     notes: [
       "Comparables insuffisants.",
-      "Estimation par règle interne : vérifier des ventes réelles avant achat."
+      "Aucune hausse de revente n’est supposée sans données de marché."
     ]
   };
 }
