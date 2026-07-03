@@ -5,7 +5,7 @@ export async function runDueReminders() {
   const db = serviceDb();
   const { data, error } = await db
     .from("auction_reminders")
-    .select("*, users(telegram_id), products(title,product_url,current_bid_price,price_amount), deal_scores(total_score)")
+    .select("*, users(telegram_id), products(title,product_url,current_bid_price,price_amount)")
     .eq("status", "pending")
     .lte("remind_at", new Date().toISOString())
     .limit(100);
