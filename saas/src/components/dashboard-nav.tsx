@@ -6,6 +6,7 @@ export function DashboardNav({ user }: { user: AppUser }) {
     ["/dashboard", "Vue générale"],
     ["/dashboard/radars", "Radars"],
     ["/dashboard/deals", "Deals"],
+    ["/dashboard/performance", "Performance"],
     ["/dashboard/alerts", "Alertes"],
     ["/dashboard/settings", "Réglages"]
   ];
