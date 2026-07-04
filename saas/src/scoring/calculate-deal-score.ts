@@ -1,5 +1,6 @@
 import type { DealScore, MarketEstimate, ProductCandidate, Radar } from "@/types";
 import { analyzeRisk } from "./analyze-risk";
+import { buildDealActionPlan } from "./action-plan";
 
 const conditionScores = { NEW: 95, A: 88, B: 72, C: 48, REPAIR: 30, UNKNOWN: 35 };
 const clamp = (value: number) => Math.max(0, Math.min(100, Math.round(value)));
@@ -55,6 +56,7 @@ export function calculateDealScore(
         : totalScore >= 55
           ? "WATCH"
           : "AVOID";
+  const actionPlan = buildDealActionPlan(candidate, radar, market.median, market.confidence);
   const reasons = [
     estimatedNetProfit > 0
       ? `Marge nette estimée à ${estimatedNetProfit.toFixed(0)} CHF.`
@@ -77,6 +79,11 @@ export function calculateDealScore(
     estimatedResalePrice: market.median,
     estimatedNetProfit: Number(estimatedNetProfit.toFixed(2)),
     estimatedRoiPercent: Number(roi.toFixed(2)),
+    maximumOffer: actionPlan.maximumOffer,
+    breakEvenResalePrice: actionPlan.breakEvenResalePrice,
+    recommendedChannel: actionPlan.recommendedChannel,
+    estimatedSaleDays: actionPlan.estimatedSaleDays,
+    actionPlan: actionPlan.action,
     recommendation,
     scoringVersion: "v2",
     marketConfidence: market.confidence,
