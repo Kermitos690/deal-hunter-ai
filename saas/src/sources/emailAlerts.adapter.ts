@@ -16,6 +16,9 @@ export const emailAlertsAdapter: SourceAdapter = {
       port: Number(process.env.EMAIL_IMAP_PORT ?? 993),
       secure: true,
       auth: { user: process.env.EMAIL_ADDRESS!, pass: process.env.EMAIL_APP_PASSWORD! },
+      connectionTimeout: 15_000,
+      greetingTimeout: 15_000,
+      socketTimeout: 30_000,
       logger: false
     });
     const results: ProductCandidate[] = [];

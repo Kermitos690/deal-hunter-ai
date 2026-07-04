@@ -62,10 +62,24 @@ export async function runRadarScan(radarId: string, ownerId?: string) {
   let candidatesFound = 0;
   let alertsSent = 0;
   try {
-    const candidateGroups = await Promise.all(
-      adaptersFor(radar.sources).map((adapter) => adapter.scan(radar))
+    const sourceResults = await Promise.allSettled(
+      adaptersFor(radar.sources).map(async (adapter) => ({
+        source: adapter.name,
+        candidates: await adapter.scan(radar)
+      }))
     );
-    const candidates = candidateGroups.flat();
+    const sourceErrors = sourceResults
+      .filter((result): result is PromiseRejectedResult => result.status === "rejected")
+      .map((result) => result.reason instanceof Error ? result.reason.message : "Erreur source");
+    sourceErrors.forEach((message) => console.warn("Source ignorée pendant le scan:", message));
+    const candidates = sourceResults
+      .filter((result): result is PromiseFulfilledResult<{ source: string; candidates: ProductCandidate[] }> =>
+        result.status === "fulfilled"
+      )
+      .flatMap((result) => result.value.candidates);
+    if (!candidates.length && sourceErrors.length === sourceResults.length) {
+      throw new Error(`Toutes les sources ont échoué: ${sourceErrors.join("; ")}`);
+    }
     candidatesFound = candidates.length;
     const convertedCandidates: ProductCandidate[] = [];
     for (const candidate of candidates) {
