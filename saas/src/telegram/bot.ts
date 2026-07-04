@@ -8,6 +8,34 @@ import { categoryKeyboard, conditionKeyboard, frequencyKeyboard, parseBrands, po
 
 const ACTIVE_RADAR_SOURCES = ["ebay", "email-alerts", "rss"];
 
+export function scanResultText(result: {
+  candidatesFound: number;
+  alertsSent: number;
+  skipped?: boolean;
+  reason?: string;
+}) {
+  if (result.skipped) {
+    const reason = result.reason === "radar_locked"
+      ? "un scan est déjà en cours"
+      : result.reason === "user_suspended"
+        ? "le compte est suspendu"
+        : "aucune source active n’est disponible";
+    return `⏭️ Scan non lancé : ${reason}.`;
+  }
+  return `✅ Scan terminé\n\n🔎 ${result.candidatesFound} annonce(s) analysée(s)\n🚨 ${result.alertsSent} opportunité(s) envoyée(s)\n\n${result.alertsSent ? "Les meilleures opportunités sont affichées ci-dessus." : "Aucune annonce ne respecte encore tous les critères de ce radar."}`;
+}
+
+async function scanAndReply(ctx: any, radarId: string, userId: string) {
+  await ctx.reply("🔎 Premier scan en cours… Les sources mondiales sont interrogées.");
+  try {
+    const result = await runRadarScan(radarId, userId);
+    await ctx.reply(scanResultText(result));
+  } catch (error) {
+    console.error("Scan Telegram impossible:", error);
+    await ctx.reply("⚠️ Le radar est bien créé, mais son scan immédiat a échoué. Tu peux le relancer depuis « Mes radars ».");
+  }
+}
+
 export function parseRadarSources(value: string) {
   const normalized = value.trim().toLowerCase();
   if (["tout", "tous", "toutes", "all", "toutes sauf mock"].includes(normalized)) return ACTIVE_RADAR_SOURCES;
@@ -134,12 +162,12 @@ export function createBot() {
     const limits=enforcePlanLimits(user,{activeRadars:activeRadars??0,alertsToday:alertsToday??0,requestedScanMinutes:payload.frequency});
     if(!limits.allowed){await clearSession(telegramId);await ctx.answerCbQuery();return ctx.reply(`❌ ${limits.errors.join(" ")}`)}
     const brands=payload.brands as string[]; const name=`${brands.join(", ")} — ${payload.category}`;
-    const {error}=await serviceDb().from("radars").insert({
+    const {data:createdRadar,error}=await serviceDb().from("radars").insert({
       user_id:user.id,name,category:payload.category,brands,max_buy_price:payload.budget,
       accepted_conditions:payload.condition,sources:payload.sources,min_profit:payload.margin,
       sale_types:["BUY_NOW","AUCTION"],min_score:70,scan_frequency_minutes:payload.frequency,
       next_scan_at:new Date().toISOString()
-    });
+    }).select("id").single();
     await ctx.answerCbQuery();
     if(error){
       console.error("Création radar Telegram impossible:",error.message);
@@ -148,6 +176,7 @@ export function createBot() {
     }
     await clearSession(telegramId);
     await ctx.reply(`✅ Radar créé et activé\n\n📡 ${name}\n💰 Budget : ${payload.budget} CHF\n📈 Marge minimum : ${payload.margin} CHF\n⏱ Scan : toutes les ${payload.frequency/60} h`);
+    await scanAndReply(ctx, createdRadar.id, user.id);
   });
 
   async function listRadars(ctx: any) {
@@ -156,7 +185,11 @@ export function createBot() {
     const text = data?.length
       ? data.map((r: any) => `${r.is_active ? "🟢" : "⏸️"} ${r.name} — max ${r.max_buy_price} CHF`).join("\n")
       : "Aucun radar. Utilise /newradar.";
-    await ctx.reply(text);
+    await ctx.reply(text, data?.length ? { reply_markup: { inline_keyboard:
+      data.filter((radar:any) => radar.is_active).map((radar:any) => [
+        { text: `🔎 Scanner ${radar.name.slice(0, 38)}`, callback_data: `scan:${radar.id}` }
+      ])
+    } } : undefined);
   }
   bot.command("radars", listRadars);
   bot.action("list_radars", async (ctx) => { await ctx.answerCbQuery(); await listRadars(ctx); });
@@ -232,8 +265,8 @@ export function createBot() {
 
   bot.action(/^scan:(.+)$/, async (ctx) => {
     const user = await userFor(ctx);
-    await runRadarScan(ctx.match[1], user.id);
-    await ctx.answerCbQuery("Scan terminé");
+    await ctx.answerCbQuery("Scan lancé");
+    await scanAndReply(ctx, ctx.match[1], user.id);
   });
   bot.action(/^(save|reject|remind|noremind|negotiate|analysis):(.+)$/, async (ctx) => {
     const user = await userFor(ctx);
