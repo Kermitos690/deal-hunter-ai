@@ -11,4 +11,29 @@ describe("estimateMarketValue", () => {
     expect(result.comparableCount).toBe(0);
     expect(result.notes.join(" ")).toContain("Comparables insuffisants");
   });
+  it("privilégie les ventes récentes et ne confond pas annonces et ventes", () => {
+    const now = Date.now();
+    const result = estimateMarketValue(mockCandidates[0], radar, [
+      ...Array.from({ length: 5 }, (_, index) => ({
+        sold_price: 900 + index * 10,
+        currency: mockCandidates[0].priceCurrency,
+        source: "auction_house",
+        evidence_type: "SOLD" as const,
+        confidence: "HIGH" as const,
+        sold_at: new Date(now - index * 86_400_000).toISOString(),
+        match_score: 1
+      })),
+      {
+        sold_price: 4000,
+        currency: mockCandidates[0].priceCurrency,
+        source: "ebay_active_listing",
+        evidence_type: "ACTIVE_LISTING",
+        confidence: "LOW",
+        match_score: 0.5
+      }
+    ]);
+    expect(result.median).toBeLessThan(1000);
+    expect(result.confidence).toBe("MEDIUM");
+    expect(result.notes.join(" ")).toContain("5 vente(s) réalisée(s)");
+  });
 });

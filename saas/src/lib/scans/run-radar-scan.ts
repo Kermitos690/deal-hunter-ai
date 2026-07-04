@@ -35,7 +35,10 @@ function comparableListings(candidate: ProductCandidate, candidates: ProductCand
     .map((item) => ({
       sold_price: item.priceAmount,
       currency: item.priceCurrency,
-      source: `${item.source}_active_listing`
+      source: `${item.source}_active_listing`,
+      evidence_type: "ACTIVE_LISTING" as const,
+      confidence: "LOW" as const,
+      match_score: item.model && candidate.model && item.model === candidate.model ? 0.8 : 0.5
     }));
 }
 
@@ -137,7 +140,7 @@ export async function runRadarScan(radarId: string, ownerId?: string) {
 
       let comparableQuery = db
         .from("market_comparables")
-        .select("sold_price,currency,source")
+        .select("sold_price,currency,source,sold_at,evidence_type,confidence,condition_grade,match_score")
         .eq("category", candidate.category ?? radar.category);
       if (candidate.brand) comparableQuery = comparableQuery.eq("brand", candidate.brand);
       const { data: verifiedComparables } = await comparableQuery.limit(20);
