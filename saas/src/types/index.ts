@@ -85,6 +85,23 @@ export interface MarketEstimate {
   comparableCount: number;
   comparableSources: string[];
   notes: string[];
+  comparableDetails: MarketComparableDetail[];
+}
+
+export interface MarketComparableDetail {
+  source: string;
+  evidenceType: "SOLD" | "ACTIVE_LISTING" | "MARKET_SIGNAL";
+  title?: string | null;
+  price: number;
+  currency: string;
+  soldAt?: string | null;
+  conditionGrade?: string | null;
+  brand?: string | null;
+  model?: string | null;
+  evidenceUrl?: string | null;
+  confidence?: string | null;
+  matchScore: number;
+  weight: number;
 }
 
 export interface DealScore {

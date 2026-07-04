@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { apiUser, isAdmin, jsonError } from "@/lib/api";
 import { serviceDb } from "@/lib/db/server";
+import { normalizeMarketText, normalizeReference } from "@/market/normalize-comparable";
 
 const comparable = z.object({
   source: z.string().trim().min(2).max(80),
@@ -9,12 +10,16 @@ const comparable = z.object({
   title: z.string().trim().min(3).max(500),
   brand: z.string().trim().max(100).nullable().optional(),
   model: z.string().trim().max(160).nullable().optional(),
+  reference: z.string().trim().max(160).nullable().optional(),
   category: z.string().trim().min(2).max(100),
   conditionGrade: z.enum(["NEW", "A", "B", "C", "REPAIR", "UNKNOWN"]).default("UNKNOWN"),
   soldPrice: z.coerce.number().positive(),
   currency: z.string().trim().length(3).transform((value) => value.toUpperCase()),
   soldAt: z.string().datetime(),
   evidenceUrl: z.string().url(),
+  country: z.string().trim().length(2).transform((value) => value.toUpperCase()).nullable().optional(),
+  fees: z.coerce.number().min(0).nullable().optional(),
+  notes: z.string().trim().max(2000).nullable().optional(),
   confidence: z.enum(["LOW", "MEDIUM", "HIGH"]).default("MEDIUM"),
   matchScore: z.coerce.number().min(0.2).max(1).default(0.75),
   rawPayload: z.record(z.unknown()).default({})
@@ -30,15 +35,19 @@ export async function POST(request: Request) {
   const rows = parsed.data.comparables.map((item) => ({
     source: item.source.toLowerCase(),
     external_id: item.externalId,
-    title: item.title,
-    brand: item.brand ?? null,
-    model: item.model ?? null,
+    title: normalizeMarketText(item.title),
+    brand: normalizeMarketText(item.brand),
+    model: normalizeMarketText(item.model),
+    reference: normalizeReference(item.reference),
     category: item.category,
     condition_grade: item.conditionGrade,
     sold_price: item.soldPrice,
     currency: item.currency,
     sold_at: item.soldAt,
     evidence_url: item.evidenceUrl,
+    country: item.country ?? null,
+    fees: item.fees ?? null,
+    notes: item.notes ?? null,
     evidence_type: "SOLD",
     confidence: item.confidence,
     match_score: item.matchScore,

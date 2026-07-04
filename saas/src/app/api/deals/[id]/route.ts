@@ -7,7 +7,7 @@ export async function GET(_: Request, { params }: Context) {
   const auth = await apiUser(); if ("response" in auth) return auth.response;
   const { data } = await serviceDb()
     .from("deal_scores")
-    .select("*, products(*, product_images(*)), radars(*)")
+    .select("*, products(*, product_images(*)), radars(*), deal_score_comparables(*)")
     .eq("id", (await params).id)
     .eq("user_id", auth.user.id)
     .maybeSingle();

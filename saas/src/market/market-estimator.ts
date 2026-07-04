@@ -9,11 +9,15 @@ export interface Comparable {
   confidence?: "LOW" | "MEDIUM" | "HIGH";
   condition_grade?: string | null;
   match_score?: number | null;
+  title?: string | null;
+  brand?: string | null;
+  model?: string | null;
+  evidence_url?: string | null;
 }
 
 const DAY = 86_400_000;
 
-function comparableWeight(item: Comparable, candidate: ProductCandidate, now: number) {
+export function comparableWeight(item: Comparable, candidate: ProductCandidate, now: number) {
   const kind = item.evidence_type ?? (item.source.endsWith("_active_listing") ? "ACTIVE_LISTING" : "SOLD");
   const evidenceWeight = kind === "SOLD" ? 1 : kind === "MARKET_SIGNAL" ? 0.45 : 0.2;
   const confidenceWeight = item.confidence === "HIGH" ? 1 : item.confidence === "MEDIUM" ? 0.8 : 0.6;
@@ -83,7 +87,22 @@ export function estimateMarketValue(
         `${sold.length} vente(s) réalisée(s), dont ${recentSold.length} sur les 90 derniers jours.`,
         `${sample.length - sold.length} signal(aux) de marché non vendu(s), pondérés à la baisse.`,
         "Estimation pondérée par récence, qualité de correspondance, état et fiabilité."
-      ]
+      ],
+      comparableDetails: sample.map(({ item, weight }) => ({
+        source: item.source,
+        evidenceType: item.evidence_type ?? (item.source.endsWith("_active_listing") ? "ACTIVE_LISTING" : "SOLD"),
+        title: item.title,
+        price: item.sold_price,
+        currency: item.currency,
+        soldAt: item.sold_at,
+        conditionGrade: item.condition_grade,
+        brand: item.brand,
+        model: item.model,
+        evidenceUrl: item.evidence_url,
+        confidence: item.confidence,
+        matchScore: item.match_score ?? 0.75,
+        weight: Number(weight.toFixed(4))
+      }))
     };
   }
 
@@ -99,6 +118,7 @@ export function estimateMarketValue(
     notes: [
       "Comparables insuffisants.",
       "Aucune hausse de revente n’est supposée sans données de marché."
-    ]
+    ],
+    comparableDetails: []
   };
 }

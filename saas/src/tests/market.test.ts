@@ -35,5 +35,7 @@ describe("estimateMarketValue", () => {
     expect(result.median).toBeLessThan(1000);
     expect(result.confidence).toBe("MEDIUM");
     expect(result.notes.join(" ")).toContain("5 vente(s) réalisée(s)");
+    expect(result.comparableDetails).toHaveLength(6);
+    expect(result.comparableDetails[0].weight).toBeGreaterThan(0);
   });
 });

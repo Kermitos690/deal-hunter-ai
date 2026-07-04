@@ -1,0 +1,2 @@
+source,externalId,title,brand,model,reference,category,conditionGrade,soldPrice,currency,soldAt,evidenceUrl,country,fees,notes,confidence,matchScore
+manual_verified,example-001,Omega Seamaster 136.005,Omega,Seamaster,136.005,Montres,B,950,CHF,2026-07-01T12:00:00.000Z,https://example.com/sale/001,CH,120,Vente conclue avec preuve,HIGH,0.95

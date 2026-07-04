@@ -34,7 +34,11 @@ function comparableListings(candidate: ProductCandidate, candidates: ProductCand
       source: `${item.source}_active_listing`,
       evidence_type: "ACTIVE_LISTING" as const,
       confidence: "LOW" as const,
-      match_score: item.model && candidate.model && item.model === candidate.model ? 0.8 : 0.5
+      match_score: item.model && candidate.model && item.model === candidate.model ? 0.8 : 0.5,
+      title: item.title,
+      brand: item.brand,
+      model: item.model,
+      evidence_url: item.productUrl
     }));
 }
 
@@ -199,7 +203,7 @@ export async function runRadarScan(radarId: string, ownerId?: string) {
 
       let comparableQuery = db
         .from("market_comparables")
-        .select("sold_price,currency,source,sold_at,evidence_type,confidence,condition_grade,match_score")
+        .select("sold_price,currency,source,sold_at,evidence_type,confidence,condition_grade,match_score,title,brand,model,evidence_url")
         .eq("category", candidate.category ?? radar.category);
       if (candidate.brand) comparableQuery = comparableQuery.eq("brand", candidate.brand);
       const { data: verifiedComparables } = await comparableQuery.limit(20);
@@ -239,6 +243,29 @@ export async function runRadarScan(radarId: string, ownerId?: string) {
         .select("*")
         .single();
       if (scoreError) throw scoreError;
+      await db.from("deal_score_comparables").delete().eq("deal_score_id", scoreRow.id);
+      if (market.comparableDetails.length) {
+        const { error: snapshotError } = await db.from("deal_score_comparables").insert(
+          market.comparableDetails.map((comparable) => ({
+            deal_score_id: scoreRow.id,
+            user_id: user.id,
+            source: comparable.source,
+            evidence_type: comparable.evidenceType,
+            title: comparable.title,
+            price: comparable.price,
+            currency: comparable.currency,
+            sold_at: comparable.soldAt,
+            condition_grade: comparable.conditionGrade,
+            brand: comparable.brand,
+            model: comparable.model,
+            evidence_url: comparable.evidenceUrl,
+            confidence: comparable.confidence ?? "LOW",
+            match_score: comparable.matchScore,
+            weight: comparable.weight
+          }))
+        );
+        if (snapshotError) throw snapshotError;
+      }
       const { data: alert, error: alertError } = await db
         .from("alerts")
         .upsert(
