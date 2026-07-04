@@ -111,21 +111,36 @@ export async function runRadarScan(radarId: string, ownerId?: string) {
       }).eq("id", log.id);
       return { candidatesFound: 0, alertsSent: 0, skipped: true, reason: "no_enabled_source" };
     }
-    const sourceResults = await Promise.allSettled(
-      enabledAdapters.map(async (adapter) => ({
-        source: adapter.name,
-        candidates: await adapter.scan(radar)
-      }))
-    );
-    const sourceErrors = sourceResults
-      .filter((result): result is PromiseRejectedResult => result.status === "rejected")
-      .map((result) => result.reason instanceof Error ? result.reason.message : "Erreur source");
+    const sourceResults = await Promise.all(enabledAdapters.map(async (adapter) => {
+      const startedAt = new Date();
+      try {
+        const candidates = await adapter.scan(radar);
+        return { source: adapter.name, candidates, error: null, startedAt, finishedAt: new Date() };
+      } catch (error) {
+        return {
+          source: adapter.name,
+          candidates: [] as ProductCandidate[],
+          error: error instanceof Error ? error.message : "Erreur source",
+          startedAt,
+          finishedAt: new Date()
+        };
+      }
+    }));
+    await db.from("source_scan_logs").insert(sourceResults.map((result) => ({
+      scan_log_id: log.id,
+      radar_id: radar.id,
+      user_id: user.id,
+      source: result.source,
+      status: result.error ? "error" : "success",
+      candidates_found: result.candidates.length,
+      duration_ms: result.finishedAt.getTime() - result.startedAt.getTime(),
+      error_message: result.error,
+      started_at: result.startedAt.toISOString(),
+      finished_at: result.finishedAt.toISOString()
+    })));
+    const sourceErrors = sourceResults.flatMap((result) => result.error ? [result.error] : []);
     sourceErrors.forEach((message) => console.warn("Source ignorée pendant le scan:", message));
-    const candidates = sourceResults
-      .filter((result): result is PromiseFulfilledResult<{ source: string; candidates: ProductCandidate[] }> =>
-        result.status === "fulfilled"
-      )
-      .flatMap((result) => result.value.candidates);
+    const candidates = sourceResults.flatMap((result) => result.candidates);
     if (!candidates.length && sourceErrors.length > 0 && sourceErrors.length === sourceResults.length) {
       throw new Error(`Toutes les sources ont échoué: ${sourceErrors.join("; ")}`);
     }
