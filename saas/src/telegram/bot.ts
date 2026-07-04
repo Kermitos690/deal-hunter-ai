@@ -4,8 +4,8 @@ import { enforcePlanLimits } from "@/plans/limits";
 import { runRadarScan } from "@/lib/scans/run-radar-scan";
 import { parseAuctionResponse } from "@/telegram/auction-response";
 import { createSessionToken } from "@/lib/security/session";
+import { categoryKeyboard, conditionKeyboard, frequencyKeyboard, parseBrands, positiveNumber, sourceKeyboard } from "@/telegram/radar-wizard";
 
-const steps = ["category", "brand", "budget", "condition", "source", "margin", "frequency"] as const;
 const ACTIVE_RADAR_SOURCES = ["ebay", "email-alerts", "rss"];
 
 export function parseRadarSources(value: string) {
@@ -51,15 +51,11 @@ async function clearSession(telegramId: string) {
   await serviceDb().from("telegram_sessions").delete().eq("telegram_id", telegramId);
 }
 
-const questions: Record<(typeof steps)[number], string> = {
-  category: "1/7 — Catégorie ? Exemple : montres, maroquinerie, accessoires.",
-  brand: "2/7 — Marque recherchée ? Exemple : Omega, Prada, Louis Vuitton.",
-  budget: "3/7 — Budget maximum d’achat en CHF ?",
-  condition: "4/7 — États acceptés ? NEW, A, B, C ou REPAIR.",
-  source: "5/7 — Sources ? Réponds ebay ou tout (eBay + e-mail + RSS).",
-  margin: "6/7 — Marge nette minimum souhaitée en CHF ?",
-  frequency: "7/7 — Fréquence de scan en minutes ? Free : minimum 360."
-};
+async function startRadarWizard(ctx:any) {
+  await userFor(ctx);
+  await setSession(String(ctx.from.id),"wizard:category",{});
+  await ctx.reply("1/7 — Choisis une catégorie :",{reply_markup:categoryKeyboard});
+}
 
 export function createBot() {
   const token = process.env.TELEGRAM_BOT_TOKEN;
@@ -98,14 +94,52 @@ export function createBot() {
     ctx.reply("/start /id /radars /newradar /alerts /deals /settings /stop /resume")
   );
   bot.command("newradar", async (ctx) => {
-    await userFor(ctx);
-    await setSession(String(ctx.from.id), "wizard:category", {});
-    await ctx.reply(questions.category);
+    await startRadarWizard(ctx);
   });
   bot.action("create_radar", async (ctx) => {
     await ctx.answerCbQuery();
-    await setSession(String(ctx.from.id), "wizard:category", {});
-    await ctx.reply(questions.category);
+    await startRadarWizard(ctx);
+  });
+
+  bot.action(/^wizcat:(.+)$/,async(ctx)=>{
+    const telegramId=String(ctx.from.id); const category=ctx.match[1];
+    await setSession(telegramId,"wizard:brand",{category}); await ctx.answerCbQuery();
+    await ctx.reply("2/7 — Écris la ou les marques recherchées.\nExemple : Omega Rolex TAG Heuer\n\nLes virgules ne sont pas obligatoires.");
+  });
+  bot.action(/^wizcond:(.+)$/,async(ctx)=>{
+    const telegramId=String(ctx.from.id); const {data:session}=await serviceDb().from("telegram_sessions").select("*").eq("telegram_id",telegramId).maybeSingle();
+    if(session?.state!=="wizard:condition") return ctx.answerCbQuery("Étape expirée");
+    const payload={...(session.payload??{}),condition:ctx.match[1].split(",")};
+    await setSession(telegramId,"wizard:source",payload); await ctx.answerCbQuery();
+    await ctx.reply("5/7 — Choisis les sources à scanner :",{reply_markup:sourceKeyboard});
+  });
+  bot.action(/^wizsrc:(.+)$/,async(ctx)=>{
+    const telegramId=String(ctx.from.id); const {data:session}=await serviceDb().from("telegram_sessions").select("*").eq("telegram_id",telegramId).maybeSingle();
+    if(session?.state!=="wizard:source") return ctx.answerCbQuery("Étape expirée");
+    const sources=ctx.match[1]==="all"?ACTIVE_RADAR_SOURCES:["ebay"];
+    await setSession(telegramId,"wizard:margin",{...(session.payload??{}),sources}); await ctx.answerCbQuery();
+    await ctx.reply("6/7 — Indique la marge nette minimum souhaitée en CHF.\nExemple : 50");
+  });
+  bot.action(/^wizfreq:(360|720|1440)$/,async(ctx)=>{
+    const telegramId=String(ctx.from.id); const {data:session}=await serviceDb().from("telegram_sessions").select("*").eq("telegram_id",telegramId).maybeSingle();
+    if(session?.state!=="wizard:frequency") return ctx.answerCbQuery("Étape expirée");
+    const payload={...(session.payload??{}),frequency:Number(ctx.match[1])};
+    const user=await userFor(ctx);
+    const [{count:activeRadars},{count:alertsToday}]=await Promise.all([
+      serviceDb().from("radars").select("*",{count:"exact",head:true}).eq("user_id",user.id).eq("is_active",true),
+      serviceDb().from("alerts").select("*",{count:"exact",head:true}).eq("user_id",user.id).gte("created_at",new Date(Date.now()-86400000).toISOString())
+    ]);
+    const limits=enforcePlanLimits(user,{activeRadars:activeRadars??0,alertsToday:alertsToday??0,requestedScanMinutes:payload.frequency});
+    if(!limits.allowed){await clearSession(telegramId);await ctx.answerCbQuery();return ctx.reply(`❌ ${limits.errors.join(" ")}`)}
+    const brands=payload.brands as string[]; const name=`${brands.join(", ")} — ${payload.category}`;
+    const {error}=await serviceDb().from("radars").insert({
+      user_id:user.id,name,category:payload.category,brands,max_buy_price:payload.budget,
+      accepted_conditions:payload.condition,sources:payload.sources,min_profit:payload.margin,
+      min_score:70,scan_frequency_minutes:payload.frequency,next_scan_at:new Date().toISOString()
+    });
+    await clearSession(telegramId); await ctx.answerCbQuery();
+    if(error) throw error;
+    await ctx.reply(`✅ Radar créé et activé\n\n📡 ${name}\n💰 Budget : ${payload.budget} CHF\n📈 Marge minimum : ${payload.margin} CHF\n⏱ Scan : toutes les ${payload.frequency/60} h`);
   });
 
   async function listRadars(ctx: any) {
@@ -168,51 +202,24 @@ export function createBot() {
       return;
     }
     if (!session?.state?.startsWith("wizard:")) return;
-    const current = session.state.split(":")[1] as (typeof steps)[number];
-    if (current === "source" && !parseRadarSources(ctx.message.text)) {
-      await ctx.reply("Source invalide. Réponds uniquement ebay ou tout.");
-      return;
+    const current=session.state.split(":")[1];
+    const payload={...(session.payload??{})};
+    if(current==="brand"){
+      const brands=parseBrands(ctx.message.text); if(!brands.length){await ctx.reply("Indique au moins une marque.");return}
+      await setSession(telegramId,"wizard:budget",{...payload,brands});
+      await ctx.reply(`Marques reconnues : ${brands.join(", ")}\n\n3/7 — Indique ton budget maximum en CHF.\nExemple : 1500`); return;
     }
-    const index = steps.indexOf(current);
-    const payload = { ...(session.payload ?? {}), [current]: ctx.message.text.trim() };
-    if (index < steps.length - 1) {
-      const next = steps[index + 1];
-      await setSession(telegramId, `wizard:${next}`, payload);
-      await ctx.reply(questions[next]);
-      return;
+    if(current==="budget"){
+      const budget=positiveNumber(ctx.message.text); if(!budget){await ctx.reply("Budget invalide. Écris uniquement un montant positif, par exemple 1500.");return}
+      await setSession(telegramId,"wizard:condition",{...payload,budget});
+      await ctx.reply("4/7 — Choisis les états acceptés :",{reply_markup:conditionKeyboard}); return;
     }
-    const user = await userFor(ctx);
-    const [{ count: activeRadars }, { count: alertsToday }] = await Promise.all([
-      serviceDb().from("radars").select("*", { count: "exact", head: true }).eq("user_id", user.id).eq("is_active", true),
-      serviceDb().from("alerts").select("*", { count: "exact", head: true }).eq("user_id", user.id).gte("created_at", new Date(Date.now() - 86400000).toISOString())
-    ]);
-    const limits = enforcePlanLimits(user, {
-      activeRadars: activeRadars ?? 0,
-      alertsToday: alertsToday ?? 0,
-      requestedScanMinutes: Number(payload.frequency)
-    });
-    if (!limits.allowed) {
-      await clearSession(telegramId);
-      await ctx.reply(`❌ ${limits.errors.join(" ")}`);
-      return;
+    if(current==="margin"){
+      const margin=positiveNumber(ctx.message.text); if(!margin){await ctx.reply("Marge invalide. Écris uniquement un montant positif, par exemple 50.");return}
+      await setSession(telegramId,"wizard:frequency",{...payload,margin});
+      await ctx.reply("7/7 — Choisis la fréquence de scan :",{reply_markup:frequencyKeyboard}); return;
     }
-    const name = `${payload.brand} ${payload.category}`;
-    const { error } = await serviceDb().from("radars").insert({
-      user_id: user.id,
-      name,
-      category: payload.category,
-      brands: String(payload.brand).split(/[,;\n]+/).map((brand) => brand.trim()).filter(Boolean),
-      max_buy_price: Number(payload.budget),
-      accepted_conditions: String(payload.condition).toUpperCase().split(/[, ]+/),
-      sources: parseRadarSources(String(payload.source)) ?? ["ebay"],
-      min_profit: Number(payload.margin),
-      min_score: 70,
-      scan_frequency_minutes: Number(payload.frequency),
-      next_scan_at: new Date().toISOString()
-    });
-    await clearSession(telegramId);
-    if (error) throw error;
-    await ctx.reply(`✅ Radar créé : ${name}. Je vais chercher les opportunités correspondant à tes critères.`);
+    await ctx.reply("Utilise les boutons affichés pour continuer la création du radar.");
   });
 
   bot.action(/^scan:(.+)$/, async (ctx) => {
