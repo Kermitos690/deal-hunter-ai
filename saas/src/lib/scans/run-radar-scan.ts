@@ -81,6 +81,14 @@ export async function runRadarScan(radarId: string, ownerId?: string) {
     });
     return { candidatesFound: 0, alertsSent: 0, skipped: true, reason: "radar_locked" };
   }
+  await db.from("scan_logs").update({
+    status: "error",
+    finished_at: new Date().toISOString(),
+    error_message: "Scan interrompu : verrou expiré puis repris."
+  })
+    .eq("radar_id", radar.id)
+    .eq("status", "running")
+    .lt("started_at", new Date(Date.now() - SCAN_LOCK_TTL_SECONDS * 1000).toISOString());
 
   const { data: log, error: logError } = await db
     .from("scan_logs")
@@ -95,8 +103,18 @@ export async function runRadarScan(radarId: string, ownerId?: string) {
   let candidatesFound = 0;
   let alertsSent = 0;
   try {
+    const enabledAdapters = adaptersFor(radar.sources);
+    if (!enabledAdapters.length) {
+      const now = new Date().toISOString();
+      await db.from("scan_logs").update({
+        status: "skipped",
+        finished_at: now,
+        error_message: `Scan ignoré : aucune source active parmi [${radar.sources.join(", ")}].`
+      }).eq("id", log.id);
+      return { candidatesFound: 0, alertsSent: 0, skipped: true, reason: "no_enabled_source" };
+    }
     const sourceResults = await Promise.allSettled(
-      adaptersFor(radar.sources).map(async (adapter) => ({
+      enabledAdapters.map(async (adapter) => ({
         source: adapter.name,
         candidates: await adapter.scan(radar)
       }))
@@ -110,7 +128,7 @@ export async function runRadarScan(radarId: string, ownerId?: string) {
         result.status === "fulfilled"
       )
       .flatMap((result) => result.value.candidates);
-    if (!candidates.length && sourceErrors.length === sourceResults.length) {
+    if (!candidates.length && sourceErrors.length > 0 && sourceErrors.length === sourceResults.length) {
       throw new Error(`Toutes les sources ont échoué: ${sourceErrors.join("; ")}`);
     }
     candidatesFound = candidates.length;
