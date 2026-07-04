@@ -108,21 +108,21 @@ export function createBot() {
   });
   bot.action(/^wizcond:(.+)$/,async(ctx)=>{
     const telegramId=String(ctx.from.id); const {data:session}=await serviceDb().from("telegram_sessions").select("*").eq("telegram_id",telegramId).maybeSingle();
-    if(session?.state!=="wizard:condition") return ctx.answerCbQuery("Étape expirée");
+    if(session?.state!=="wizard:condition") return ctx.answerCbQuery();
     const payload={...(session.payload??{}),condition:ctx.match[1].split(",")};
     await setSession(telegramId,"wizard:source",payload); await ctx.answerCbQuery();
     await ctx.reply("5/7 — Choisis les sources à scanner :",{reply_markup:sourceKeyboard});
   });
   bot.action(/^wizsrc:(.+)$/,async(ctx)=>{
     const telegramId=String(ctx.from.id); const {data:session}=await serviceDb().from("telegram_sessions").select("*").eq("telegram_id",telegramId).maybeSingle();
-    if(session?.state!=="wizard:source") return ctx.answerCbQuery("Étape expirée");
+    if(session?.state!=="wizard:source") return ctx.answerCbQuery();
     const sources=ctx.match[1]==="all"?ACTIVE_RADAR_SOURCES:["ebay"];
     await setSession(telegramId,"wizard:margin",{...(session.payload??{}),sources}); await ctx.answerCbQuery();
     await ctx.reply("6/7 — Indique la marge nette minimum souhaitée en CHF.\nExemple : 50");
   });
   bot.action(/^wizfreq:(360|720|1440)$/,async(ctx)=>{
     const telegramId=String(ctx.from.id); const {data:session}=await serviceDb().from("telegram_sessions").select("*").eq("telegram_id",telegramId).maybeSingle();
-    if(session?.state!=="wizard:frequency") return ctx.answerCbQuery("Étape expirée");
+    if(session?.state!=="wizard:frequency") return ctx.answerCbQuery();
     const payload={...(session.payload??{}),frequency:Number(ctx.match[1])};
     const user=await userFor(ctx);
     const [{count:activeRadars},{count:alertsToday}]=await Promise.all([
@@ -135,10 +135,16 @@ export function createBot() {
     const {error}=await serviceDb().from("radars").insert({
       user_id:user.id,name,category:payload.category,brands,max_buy_price:payload.budget,
       accepted_conditions:payload.condition,sources:payload.sources,min_profit:payload.margin,
-      min_score:70,scan_frequency_minutes:payload.frequency,next_scan_at:new Date().toISOString()
+      sale_types:["BUY_NOW","AUCTION"],min_score:70,scan_frequency_minutes:payload.frequency,
+      next_scan_at:new Date().toISOString()
     });
-    await clearSession(telegramId); await ctx.answerCbQuery();
-    if(error) throw error;
+    await ctx.answerCbQuery();
+    if(error){
+      console.error("Création radar Telegram impossible:",error.message);
+      await ctx.reply("❌ Le radar n’a pas pu être créé. Tes réponses sont conservées : appuie à nouveau sur la fréquence ou utilise /newradar.");
+      return;
+    }
+    await clearSession(telegramId);
     await ctx.reply(`✅ Radar créé et activé\n\n📡 ${name}\n💰 Budget : ${payload.budget} CHF\n📈 Marge minimum : ${payload.margin} CHF\n⏱ Scan : toutes les ${payload.frequency/60} h`);
   });
 
