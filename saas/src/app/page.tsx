@@ -5,7 +5,7 @@ export default function Landing() {
     <main>
       <nav className="mx-auto flex max-w-6xl items-center justify-between px-6 py-6">
         <span className="text-xl font-black">DEAL HUNTER <span className="text-mint">AI</span></span>
-        <div className="flex gap-2"><Link className="button-secondary" href="/methodologie">Méthodologie</Link><Link className="button-secondary" href="/login">Connexion</Link></div>
+        <div className="flex gap-2"><Link className="button-secondary" href="/partenaires">Partenaires</Link><Link className="button-secondary" href="/methodologie">Méthodologie</Link><Link className="button-secondary" href="/login">Connexion</Link></div>
       </nav>
       <section className="mx-auto grid min-h-[70vh] max-w-6xl items-center gap-12 px-6 py-16 lg:grid-cols-2">
         <div>

@@ -1,0 +1,8 @@
+priority,supplier,segment,initial_access,target_integration,request,public_url,status
+1,The Brand Collector,Authenticated pre-owned luxury,B2B registration,Catalog feed or partner API,Read-only sample catalog and technical contact,https://wholesale.thebrandcollector.com/,TO_CONTACT
+2,Luxclusif,Authenticated pre-owned luxury,Commercial approval,Custom CSV or marketplace API,Sample feed and pilot conditions,https://www.luxclusif.com/services/b2bwholesale,TO_CONTACT
+3,BDroppy,Designer fashion dropshipping,Free account,CSV XML JSON or XLS feed,Sample export and redistribution rules,https://www.bdroppy.com/dropshipping,TO_REGISTER
+4,B2B Griffati,Designer fashion wholesale and dropshipping,Professional account,API or catalog file,API sandbox and commercial terms,https://www.griffati.com/it/dropshipping.html,TO_CONTACT
+5,BrandsGateway,Luxury fashion dropshipping,Paid plan or commercial approval,REST API or scheduled CSV,API credentials process and pilot terms,https://brandsgateway.com/,TO_CONTACT
+6,BigBuy,General B2B and dropshipping,Professional account,REST catalog shipping stock and orders,Catalog API trial or sandbox,https://www.bigbuy.eu/fr/api_bigbuy.html,LATER
+7,Syncee,Multi-supplier aggregator,Free plan,Datafeed manager,Test generic feed ingestion,https://syncee.com/page/datafeed-manager/,TO_TEST
