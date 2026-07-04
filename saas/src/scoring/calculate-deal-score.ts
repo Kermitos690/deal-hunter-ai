@@ -1,4 +1,5 @@
 import type { DealScore, MarketEstimate, ProductCandidate, Radar } from "@/types";
+import { analyzeRisk } from "./analyze-risk";
 
 const conditionScores = { NEW: 95, A: 88, B: 72, C: 48, REPAIR: 30, UNKNOWN: 35 };
 const clamp = (value: number) => Math.max(0, Math.min(100, Math.round(value)));
@@ -23,25 +24,9 @@ export function calculateDealScore(
       (knownBrand ? 8 : -8)
   );
 
-  const warnings: string[] = [];
-  let safety = 80;
-  if (!candidate.imageUrls.length) {
-    safety -= 35;
-    warnings.push("Photos insuffisantes : authenticité et état à vérifier.");
-  }
-  if (!candidate.sellerRating) {
-    safety -= 12;
-    warnings.push("Réputation vendeur inconnue.");
-  }
-  if (candidate.priceAmount < market.low * 0.35) {
-    safety -= 30;
-    warnings.push("Prix anormalement bas : risque d’authenticité élevé.");
-  }
-  if (market.confidence === "LOW") {
-    safety -= 12;
-    warnings.push("Comparables insuffisants.");
-  }
-  const riskScore = clamp(safety);
+  const risk = analyzeRisk(candidate, market);
+  const warnings = [...risk.signals, ...risk.checks.map((check) => `À vérifier : ${check}`)];
+  const riskScore = risk.score;
   const conditionScore = conditionScores[candidate.conditionGrade ?? "UNKNOWN"];
 
   let urgencyScore = 35;

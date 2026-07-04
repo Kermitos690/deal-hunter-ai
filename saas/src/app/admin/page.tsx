@@ -13,7 +13,7 @@ export default async function AdminPage() {
     { count: users }, { count: activeRadars }, { count: alertsToday },
     { count: scanErrors }, { count: soldComparables }, { count: activeUsers }, { count: suspendedUsers },
     { count: skippedScans }, { count: savedDeals }, { count: rejectedDeals }, { count: totalAlerts }, { data: userRows },
-    { data: recentScans }, { data: recentAlerts }, { data: radars }
+    { data: recentScans }, { data: recentAlerts }, { data: radars }, { data: realizedDeals }
   ] = await Promise.all([
     db.from("users").select("*",{count:"exact",head:true}),
     db.from("radars").select("*",{count:"exact",head:true}).eq("is_active",true),
@@ -29,9 +29,11 @@ export default async function AdminPage() {
     db.from("users").select("id,telegram_id,email,display_name,role,plan,status,alerts_enabled,created_at,subscriptions(status,plan,current_period_end),radars(id,name,is_active,sources,last_scanned_at)").order("created_at",{ascending:false}),
     db.from("scan_logs").select("id,status,candidates_found,alerts_sent,error_message,started_at,finished_at,radars(name),users(display_name)").order("started_at",{ascending:false}).limit(12),
     db.from("alerts").select("id,status,created_at,users(display_name),products(title,source),deal_scores(total_score,estimated_net_profit,market_confidence)").order("created_at",{ascending:false}).limit(8),
-    db.from("radars").select("id,name,is_active,sources,last_scanned_at,next_scan_at,users(display_name)").order("created_at",{ascending:false})
+    db.from("radars").select("id,name,is_active,sources,last_scanned_at,next_scan_at,users(display_name)").order("created_at",{ascending:false}),
+    db.from("saved_deals").select("actual_profit,actual_buy_price").eq("lifecycle_status","sold")
   ]);
   const sourceCounts = (radars ?? []).flatMap((radar:any)=>radar.sources ?? []).reduce((acc:Record<string,number>,source:string)=>(acc[source]=(acc[source]??0)+1,acc),{});
+  const realizedProfit=(realizedDeals??[]).reduce((sum:number,deal:any)=>sum+Number(deal.actual_profit??0),0);
 
   return <main className="mx-auto max-w-7xl p-6 md:p-10">
     <Link href="/dashboard" className="text-slate-400">← Dashboard utilisateur</Link>
@@ -39,7 +41,7 @@ export default async function AdminPage() {
     <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
       <Stat k="Utilisateurs" v={users??0} hint={`${activeUsers??0} actif(s), ${suspendedUsers??0} suspendu(s)`}/><Stat k="Radars actifs" v={activeRadars??0} hint="tous utilisateurs"/><Stat k="Alertes 24 h" v={alertsToday??0} hint="envoyées ou créées"/><Stat k="Erreurs 7 j" v={scanErrors??0} hint={`${skippedScans??0} scan(s) ignoré(s)`} danger={Boolean(scanErrors)}/><Stat k="Ventes vérifiées" v={soldComparables??0} hint="comparables marché"/>
     </div>
-    <div className="mt-4 grid gap-4 sm:grid-cols-3"><Stat k="Deals sauvegardés" v={savedDeals??0} hint="actions utilisateurs"/><Stat k="Deals rejetés" v={rejectedDeals??0} hint="actions utilisateurs"/><Stat k="Taux actionnable" v={totalAlerts?Math.round(((savedDeals??0)/totalAlerts)*100):0} hint="% sauvegardés / alertes totales"/></div>
+    <div className="mt-4 grid gap-4 sm:grid-cols-4"><Stat k="Deals sauvegardés" v={savedDeals??0} hint="actions utilisateurs"/><Stat k="Deals rejetés" v={rejectedDeals??0} hint="actions utilisateurs"/><Stat k="Taux actionnable" v={totalAlerts?Math.round(((savedDeals??0)/totalAlerts)*100):0} hint="% sauvegardés / alertes totales"/><Stat k="Bénéfice réel" v={Math.round(realizedProfit)} hint={`${realizedDeals?.length??0} revente(s), en CHF`}/></div>
     <nav className="mt-6 flex flex-wrap gap-3"><Link className="button-secondary" href="/admin/health">Santé et configuration</Link><a className="button-secondary" href="/api/admin/scan-logs">Exporter les logs JSON</a></nav>
 
     <div className="mt-10 grid gap-6 xl:grid-cols-3">
