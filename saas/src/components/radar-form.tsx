@@ -7,9 +7,9 @@ const split = (value: FormDataEntryValue | null) =>
 const checked = (form: FormData, name: string) => form.getAll(name).map(String);
 
 const CONDITIONS = [["NEW","Neuf"],["A","Excellent"],["B","Bon"],["C","Usagé"],["REPAIR","À réparer"],["UNKNOWN","Non précisé"]];
-const SALE_TYPES = [["BUY_NOW","Achat immédiat"],["AUCTION","Enchère"],["LOT","Lot"],["B2B","Professionnel"]];
+const SALE_TYPES = [["BUY_NOW","Achat immédiat"],["AUCTION","Enchère"]];
 const SOURCES = [["ebay","eBay mondial"],["email-alerts","Alertes e-mail"],["rss","Flux maisons d’enchères"]];
-const COUNTRIES = [["CH","Suisse"],["FR","France"],["DE","Allemagne"],["IT","Italie"],["GB","Royaume-Uni"],["US","États-Unis"],["CA","Canada"],["AU","Australie"],["JP","Japon"],["EU","Union européenne"],["WORLD","Monde entier"]];
+const COUNTRIES = [["CH","Suisse"],["FR","France"],["DE","Allemagne"],["IT","Italie"],["GB","Royaume-Uni"],["US","États-Unis"],["CA","Canada"],["AU","Australie"],["JP","Japon"],["EU","Autres pays UE"]];
 const CATEGORIES = ["Montres","Sacs et accessoires","Sneakers","Cartes à collectionner","Bijoux","Électronique","Mode","Objets de collection","Pièces détachées","Autre"];
 
 export function RadarForm() {
@@ -36,7 +36,7 @@ export function RadarForm() {
       repair_cost: form.get("repair_cost"), scan_frequency_minutes: form.get("scan_frequency_minutes"),
       alerts_enabled: form.get("alerts_enabled") === "on",
       photos_required: form.get("photos_required") === "on",
-      auction_mode: form.get("auction_mode") === "on",
+      auction_mode: checked(form, "sale_types").includes("AUCTION"),
       auction_reminder_enabled: form.get("auction_reminder_enabled") === "on",
       is_active: true
     };
@@ -55,13 +55,15 @@ export function RadarForm() {
       <Field name="models" label="Modèles ou références" placeholder="Seamaster, 136.005, Professional 2000" />
       <div className="grid gap-5 md:grid-cols-2"><Field name="include_keywords" label="Mots-clés inclus" /><Field name="exclude_keywords" label="Mots-clés exclus" defaultValue="fake, replica, inspired, boîte seule" /></div>
     </Section>
-    <Section title="2. Couverture géographique" hint="Tout est présélectionné pour maximiser la couverture mondiale.">
+    <Section title="2. Couverture géographique" hint="Les pays connus sont filtrés. Une annonce sans pays renseigné reste admissible.">
       <ChoiceGroup name="source_countries" options={COUNTRIES} defaults={COUNTRIES.map(([v])=>v)} />
       <Select name="target_country" label="Pays de livraison" options={["CH","FR","DE","IT","GB","US","CA","AU","JP"]} defaultValue="CH" />
+      <p className="text-xs text-slate-500">Les frais vers le pays cible restent ceux saisis manuellement. Calcul automatique : bientôt disponible.</p>
     </Section>
     <Section title="3. État et type de vente" hint="Décoche uniquement ce que tu refuses absolument.">
       <ChoiceGroup title="États acceptés" name="accepted_conditions" options={CONDITIONS} defaults={CONDITIONS.map(([v])=>v)} />
       <ChoiceGroup title="Types de vente" name="sale_types" options={SALE_TYPES} defaults={SALE_TYPES.map(([v])=>v)} />
+      <p className="text-xs text-slate-500">Lots et ventes B2B : bientôt disponibles lorsque la source fournit une donnée fiable.</p>
     </Section>
     <Section title="4. Sources interrogées" hint="Toutes les sources actuellement opérationnelles sont présélectionnées.">
       <ChoiceGroup name="sources" options={SOURCES} defaults={SOURCES.map(([v])=>v)} />
@@ -74,7 +76,7 @@ export function RadarForm() {
       <div className="grid gap-5 md:grid-cols-3"><Field name="vat_rate" label="TVA %" type="number" defaultValue="0" /><Field name="platform_fee_rate" label="Commission plateforme %" type="number" defaultValue="12" /><Field name="payment_fee_rate" label="Commission paiement %" type="number" defaultValue="3" /></div>
     </Section>
     <Section title="6. Alertes">
-      <div className="grid gap-3 sm:grid-cols-2">{[["alerts_enabled","Alertes Telegram"],["photos_required","Photos obligatoires"],["auction_mode","Mode enchère"],["auction_reminder_enabled","Rappel avant fin"]].map(([name,label]) => <label key={name} className="flex items-center gap-3 rounded-xl border border-white/10 bg-white/[.03] p-3"><input name={name} type="checkbox" defaultChecked />{label}</label>)}</div>
+      <div className="grid gap-3 sm:grid-cols-2">{[["alerts_enabled","Alertes Telegram"],["photos_required","Photos obligatoires"],["auction_reminder_enabled","Rappel si une date d’enchère est disponible"]].map(([name,label]) => <label key={name} className="flex items-center gap-3 rounded-xl border border-white/10 bg-white/[.03] p-3"><input name={name} type="checkbox" defaultChecked />{label}</label>)}</div>
     </Section>
     {error && <p className="rounded-xl bg-red-500/10 p-3 text-red-300">{error}</p>}
     <button className="button" disabled={busy}>{busy ? "Création…" : "Créer le radar complet"}</button>

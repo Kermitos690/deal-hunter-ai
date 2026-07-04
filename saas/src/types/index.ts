@@ -62,6 +62,7 @@ export interface ProductCandidate {
   buyNowPrice?: number;
   currentBidPrice?: number;
   auctionEndAt?: string;
+  saleType?: "BUY_NOW" | "AUCTION";
   shippingCost?: number;
   conditionText?: string;
   conditionGrade?: ConditionGrade;
