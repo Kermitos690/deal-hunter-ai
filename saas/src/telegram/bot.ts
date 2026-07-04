@@ -6,6 +6,16 @@ import { parseAuctionResponse } from "@/telegram/auction-response";
 import { createSessionToken } from "@/lib/security/session";
 
 const steps = ["category", "brand", "budget", "condition", "source", "margin", "frequency"] as const;
+const ACTIVE_RADAR_SOURCES = ["ebay", "email-alerts", "rss"];
+
+export function parseRadarSources(value: string) {
+  const normalized = value.trim().toLowerCase();
+  if (["tout", "tous", "toutes", "all", "toutes sauf mock"].includes(normalized)) return ACTIVE_RADAR_SOURCES;
+  const requested = normalized.split(/[,;\s]+/).filter(Boolean);
+  return requested.length && requested.every((source) => ACTIVE_RADAR_SOURCES.includes(source))
+    ? [...new Set(requested)]
+    : null;
+}
 
 function dashboardLoginUrl(telegramId: string) {
   const token = encodeURIComponent(createSessionToken(telegramId, 15 * 60));
@@ -46,7 +56,7 @@ const questions: Record<(typeof steps)[number], string> = {
   brand: "2/7 — Marque recherchée ? Exemple : Omega, Prada, Louis Vuitton.",
   budget: "3/7 — Budget maximum d’achat en CHF ?",
   condition: "4/7 — États acceptés ? NEW, A, B, C ou REPAIR.",
-  source: "5/7 — Source ? mock pour tester, ou ebay si configuré.",
+  source: "5/7 — Sources ? Réponds ebay ou tout (eBay + e-mail + RSS).",
   margin: "6/7 — Marge nette minimum souhaitée en CHF ?",
   frequency: "7/7 — Fréquence de scan en minutes ? Free : minimum 360."
 };
@@ -159,6 +169,10 @@ export function createBot() {
     }
     if (!session?.state?.startsWith("wizard:")) return;
     const current = session.state.split(":")[1] as (typeof steps)[number];
+    if (current === "source" && !parseRadarSources(ctx.message.text)) {
+      await ctx.reply("Source invalide. Réponds uniquement ebay ou tout.");
+      return;
+    }
     const index = steps.indexOf(current);
     const payload = { ...(session.payload ?? {}), [current]: ctx.message.text.trim() };
     if (index < steps.length - 1) {
@@ -190,7 +204,7 @@ export function createBot() {
       brands: String(payload.brand).split(/[,;\n]+/).map((brand) => brand.trim()).filter(Boolean),
       max_buy_price: Number(payload.budget),
       accepted_conditions: String(payload.condition).toUpperCase().split(/[, ]+/),
-      sources: [String(payload.source).toLowerCase()],
+      sources: parseRadarSources(String(payload.source)) ?? ["ebay"],
       min_profit: Number(payload.margin),
       min_score: 70,
       scan_frequency_minutes: Number(payload.frequency),

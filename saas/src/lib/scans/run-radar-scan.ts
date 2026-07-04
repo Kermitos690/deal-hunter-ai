@@ -8,14 +8,8 @@ import { PLAN_LIMITS } from "@/plans/limits";
 import { candidateInChf } from "@/lib/fx";
 import { randomUUID } from "node:crypto";
 import { SCAN_LOCK_TTL_SECONDS, userCanRunActivity } from "@/lib/scans/scan-policy";
+import { candidateMatchesRadar, scoreMatchesRadar } from "@/lib/scans/radar-filters";
 import type { AppUser, ProductCandidate, Radar } from "@/types";
-
-function candidateAllowed(candidate: ProductCandidate, radar: Radar) {
-  if (candidate.priceAmount > radar.max_buy_price) return false;
-  if (radar.photos_required && candidate.imageUrls.length === 0) return false;
-  if (!radar.accepted_conditions.includes(candidate.conditionGrade ?? "UNKNOWN")) return false;
-  return true;
-}
 
 function comparableListings(candidate: ProductCandidate, candidates: ProductCandidate[]) {
   const brand = candidate.brand?.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase();
@@ -149,7 +143,7 @@ export async function runRadarScan(radarId: string, ownerId?: string) {
     let remaining = Math.max(0, PLAN_LIMITS[user.plan].alertsPerDay - (alertsToday ?? 0));
 
     for (const candidate of convertedCandidates) {
-      if (!candidateAllowed(candidate, radar) || remaining <= 0) continue;
+      if (!candidateMatchesRadar(candidate, radar) || remaining <= 0) continue;
       const normalizedUrl = normalizeUrl(candidate.productUrl);
       const fingerprint = productFingerprint(candidate);
       const { data: product, error: productError } = await db
@@ -214,11 +208,7 @@ export async function runRadarScan(radarId: string, ownerId?: string) {
         ...comparableListings(candidate, convertedCandidates)
       ]);
       const score = calculateDealScore(candidate, radar, market);
-      if (
-        score.totalScore < radar.min_score ||
-        score.estimatedNetProfit < Math.max(0, radar.min_profit) ||
-        score.estimatedNetProfit < 0
-      ) continue;
+      if (!scoreMatchesRadar(score, radar)) continue;
 
       const { data: scoreRow, error: scoreError } = await db
         .from("deal_scores")
