@@ -1,5 +1,6 @@
-import { describe, expect, it } from "vitest";
-import { komehyoConditionGrade, parseKomehyoHtml } from "@/sources/komehyo.adapter";
+import { describe, expect, it, vi } from "vitest";
+import { komehyoAdapter, komehyoConditionGrade, parseKomehyoHtml } from "@/sources/komehyo.adapter";
+import { radar } from "./fixtures";
 
 const fixture = `
 <ul class="result-list">
@@ -40,5 +41,17 @@ describe("source KOMEHYO", () => {
     expect(item.title).toContain("\"007\"");
     expect(item.productUrl).toBe("https://komehyo.jp/product/270-004-305-4449/");
     expect(item.imageUrls).toHaveLength(1);
+  });
+
+  it("conserve les autres marques lorsqu'une requête échoue", async () => {
+    vi.stubGlobal("fetch", vi.fn()
+      .mockResolvedValueOnce(new Response("", { status: 500 }))
+      .mockResolvedValueOnce(new Response(fixture.padEnd(1_200, " "), { status: 200 })));
+    const items = await komehyoAdapter.scan({
+      ...radar, brands: ["Prada", "Omega"], sources: ["komehyo"]
+    });
+    expect(items).toHaveLength(1);
+    expect(items[0].sourceItemId).toBe("4054980");
+    vi.unstubAllGlobals();
   });
 });
