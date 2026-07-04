@@ -1,11 +1,12 @@
 import { Telegraf } from "telegraf";
 import { serviceDb } from "@/lib/db/server";
+import { userCanRunActivity } from "@/lib/scans/scan-policy";
 
 export async function runDueReminders() {
   const db = serviceDb();
   const { data, error } = await db
     .from("auction_reminders")
-    .select("*, users(telegram_id), products(title,product_url,current_bid_price,price_amount)")
+    .select("*, users(telegram_id,status), products(title,product_url,current_bid_price,price_amount)")
     .eq("status", "pending")
     .lte("remind_at", new Date().toISOString())
     .limit(100);
@@ -14,9 +15,18 @@ export async function runDueReminders() {
   if (!token) return { processed: 0, skipped: data?.length ?? 0 };
   const bot = new Telegraf(token);
   let processed = 0;
+  let skipped = 0;
   for (const reminder of data ?? []) {
+    if (!userCanRunActivity(reminder.users?.status)) {
+      await db.from("auction_reminders")
+        .update({ status: "cancelled_user_suspended" })
+        .eq("id", reminder.id)
+        .eq("user_id", reminder.user_id);
+      skipped += 1;
+      continue;
+    }
     const telegramId = reminder.users?.telegram_id;
-    if (!telegramId) continue;
+    if (!telegramId) { skipped += 1; continue; }
     const product = reminder.products;
     await bot.telegram.sendMessage(
       telegramId,
@@ -26,5 +36,5 @@ export async function runDueReminders() {
     await db.from("auction_reminders").update({ status: "sent" }).eq("id", reminder.id).eq("user_id", reminder.user_id);
     processed += 1;
   }
-  return { processed, skipped: 0 };
+  return { processed, skipped };
 }

@@ -1,4 +1,4 @@
-name: Deal Hunter AI
+name: "[DISABLED] Legacy Deal Hunter Python"
 
 on:
   workflow_dispatch:
@@ -32,15 +32,13 @@ on:
         required: false
         default: ""
 
-  schedule:
-    - cron: "*/15 * * * *"
-
 concurrency:
-  group: deal-hunter-ai
+  group: deal-hunter-ai-legacy-disabled
   cancel-in-progress: true
 
 jobs:
   run:
+    if: ${{ false }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
 

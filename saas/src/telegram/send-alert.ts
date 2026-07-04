@@ -30,12 +30,18 @@ export async function sendDealAlert(
   };
   const text = formatTelegramAlert(candidate, score);
   const photo = candidate.imageUrls[0];
-  const message = photo
-    ? await bot.telegram.sendPhoto(telegramId, photo, {
-        caption: text.slice(0, 1000),
-        reply_markup: buttons
-      })
-    : await bot.telegram.sendMessage(telegramId, text, { reply_markup: buttons });
+  let message;
+  try {
+    message = photo
+      ? await bot.telegram.sendPhoto(telegramId, photo, {
+          caption: text.slice(0, 1000),
+          reply_markup: buttons
+        })
+      : await bot.telegram.sendMessage(telegramId, text, { reply_markup: buttons });
+  } catch (error) {
+    console.error("Échec envoi alerte Telegram:", error instanceof Error ? error.message : "Erreur inconnue");
+    throw error;
+  }
   if (candidate.auctionEndAt) {
     await serviceDb().from("telegram_sessions").upsert({
       telegram_id: telegramId,

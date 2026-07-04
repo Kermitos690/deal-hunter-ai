@@ -6,6 +6,8 @@ import { calculateDealScore } from "@/scoring/calculate-deal-score";
 import { sendDealAlert } from "@/telegram/send-alert";
 import { PLAN_LIMITS } from "@/plans/limits";
 import { candidateInChf } from "@/lib/fx";
+import { randomUUID } from "node:crypto";
+import { SCAN_LOCK_TTL_SECONDS, userCanRunActivity } from "@/lib/scans/scan-policy";
 import type { AppUser, ProductCandidate, Radar } from "@/types";
 
 function candidateAllowed(candidate: ProductCandidate, radar: Radar) {
@@ -51,13 +53,44 @@ export async function runRadarScan(radarId: string, ownerId?: string) {
   const radar = row as unknown as Radar & { users: AppUser };
   const user = radar.users;
   if (!radar.is_active) throw new Error("Radar en pause.");
+  if (!userCanRunActivity(user.status)) {
+    await db.from("scan_logs").insert({
+      radar_id: radar.id,
+      user_id: radar.user_id,
+      status: "skipped",
+      finished_at: new Date().toISOString(),
+      error_message: "Scan ignoré : utilisateur suspendu."
+    });
+    return { candidatesFound: 0, alertsSent: 0, skipped: true, reason: "user_suspended" };
+  }
+
+  const lockToken = randomUUID();
+  const { data: lockAcquired, error: lockError } = await db.rpc("acquire_radar_scan_lock", {
+    p_radar_id: radar.id,
+    p_lock_token: lockToken,
+    p_ttl_seconds: SCAN_LOCK_TTL_SECONDS
+  });
+  if (lockError) throw new Error(`Verrou de scan indisponible: ${lockError.message}`);
+  if (!lockAcquired) {
+    await db.from("scan_logs").insert({
+      radar_id: radar.id,
+      user_id: radar.user_id,
+      status: "skipped",
+      finished_at: new Date().toISOString(),
+      error_message: "Scan ignoré : radar déjà verrouillé."
+    });
+    return { candidatesFound: 0, alertsSent: 0, skipped: true, reason: "radar_locked" };
+  }
 
   const { data: log, error: logError } = await db
     .from("scan_logs")
     .insert({ radar_id: radar.id, user_id: radar.user_id, status: "running" })
     .select("*")
     .single();
-  if (logError) throw logError;
+  if (logError) {
+    await db.rpc("release_radar_scan_lock", { p_radar_id: radar.id, p_lock_token: lockToken });
+    throw logError;
+  }
 
   let candidatesFound = 0;
   let alertsSent = 0;
@@ -215,6 +248,13 @@ export async function runRadarScan(radarId: string, ownerId?: string) {
       if (alertError) throw alertError;
 
       if (user.telegram_id && user.alerts_enabled && radar.alerts_enabled) {
+        const { data: liveUser } = await db.from("users").select("status").eq("id", user.id).maybeSingle();
+        if (!userCanRunActivity(liveUser?.status)) {
+          await db.from("scan_logs").update({
+            error_message: "Scan arrêté avant alerte : utilisateur suspendu."
+          }).eq("id", log.id);
+          break;
+        }
         const result = await sendDealAlert(user.telegram_id, alert.id, candidate, score);
         await db
           .from("alerts")
@@ -255,14 +295,21 @@ export async function runRadarScan(radarId: string, ownerId?: string) {
       error_message: scanError instanceof Error ? scanError.message : "Erreur inconnue"
     }).eq("id", log.id);
     throw scanError;
+  } finally {
+    const { error: releaseError } = await db.rpc("release_radar_scan_lock", {
+      p_radar_id: radar.id,
+      p_lock_token: lockToken
+    });
+    if (releaseError) console.error("Impossible de libérer le verrou radar:", releaseError.message);
   }
 }
 
 export async function runDueScans() {
   const { data, error } = await serviceDb()
     .from("radars")
-    .select("id,user_id")
+    .select("id,user_id,users!inner(status)")
     .eq("is_active", true)
+    .eq("users.status", "active")
     .lte("next_scan_at", new Date().toISOString())
     .order("next_scan_at", { ascending: true })
     .limit(5);
