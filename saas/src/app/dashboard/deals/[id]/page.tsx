@@ -3,11 +3,14 @@ import { requireUser } from "@/lib/security/session";
 import { serviceDb } from "@/lib/db/server";
 import { DealActions } from "@/components/deal-actions";
 import { calculateResaleScenarios } from "@/scoring/resale-scenarios";
+import { DealLifecycleForm } from "@/components/deal-lifecycle-form";
+import { estimateAccuracy } from "@/lib/deals/lifecycle";
 export default async function DealDetail({ params }: { params: Promise<{ id: string }> }) {
   const user = await requireUser();
   const { data: deal } = await serviceDb().from("deal_scores").select("*, products(*, product_images(*)), radars(*), deal_score_comparables(*)").eq("id", (await params).id).eq("user_id", user.id).maybeSingle();
   if (!deal) notFound();
   const p = deal.products;
+  const { data: savedDeal } = await serviceDb().from("saved_deals").select("*").eq("user_id", user.id).eq("product_id", p.id).maybeSingle();
   const radar = deal.radars;
   const scenarios = calculateResaleScenarios({
     itemPrice: Number(p.price_amount),
@@ -35,6 +38,10 @@ export default async function DealDetail({ params }: { params: Promise<{ id: str
       {deal.deal_score_comparables?.length ? <div className="mt-4 overflow-x-auto"><table className="w-full min-w-[760px] text-left text-sm"><thead className="text-slate-500"><tr><th className="pb-3">Preuve</th><th>Source</th><th>Produit</th><th>Prix</th><th>Date</th><th>État</th><th>Fiabilité</th><th>Poids</th></tr></thead><tbody>{deal.deal_score_comparables.sort((a:any,b:any)=>b.weight-a.weight).map((c:any)=><tr className="border-t border-white/10" key={c.id}><td className="py-3"><span className="badge">{c.evidence_type}</span></td><td>{c.source}</td><td>{c.evidence_url?<a className="text-mint" href={c.evidence_url} target="_blank">{c.title??c.model??"Voir"}</a>:c.title??c.model??"—"}</td><td>{c.price} {c.currency}</td><td>{c.sold_at?new Date(c.sold_at).toLocaleDateString("fr-CH"):"—"}</td><td>{c.condition_grade??"—"}</td><td>{c.confidence}</td><td>{Number(c.weight).toFixed(3)}</td></tr>)}</tbody></table></div>:<div className="mt-4 rounded-xl bg-orange-400/10 p-4 text-orange-100">Aucun comparable solide enregistré. L’estimation est prudente et ne doit pas être considérée comme un prix de revente garanti.</div>}
     </section>
     <section className="card mt-6"><h2 className="font-bold">Checklist avant achat</h2><div className="mt-4 grid gap-2 md:grid-cols-2">{["Photos du numéro de série si disponible","Couture, logo et marquage","État intérieur","Port, douane et TVA","Politique de retour","Réputation vendeur","Ventes comparables","Ne pas dépasser le prix maximum"].map(x => <label key={x} className="flex gap-2"><input type="checkbox"/>{x}</label>)}</div></section>
+    <section className="card mt-6"><h2 className="font-bold">Résultat réel</h2><p className="mt-1 text-sm text-slate-400">Ces données privées servent à mesurer et améliorer la fiabilité du scoring.</p>
+      {savedDeal?.lifecycle_status === "sold" && savedDeal.actual_profit != null && (() => { const accuracy = estimateAccuracy(Number(deal.estimated_net_profit), Number(savedDeal.actual_profit)); return <div className="mt-4 grid gap-3 md:grid-cols-3"><Metric k="Bénéfice réel" v={`${savedDeal.actual_profit} CHF`} /><Metric k="Écart à l’estimation" v={`${accuracy.difference > 0 ? "+" : ""}${accuracy.difference} CHF`} /><Metric k="Erreur d’estimation" v={accuracy.errorPercent == null ? "—" : `${accuracy.errorPercent}%`} /></div>; })()}
+      <DealLifecycleForm dealId={deal.id} saved={savedDeal} />
+    </section>
   </div>;
 }
 function Metric({k,v}:{k:string;v:string}) { return <div className="rounded-xl bg-black/20 p-3"><div className="text-xs text-slate-500">{k}</div><div className="mt-1 text-lg font-bold">{v}</div></div>; }
