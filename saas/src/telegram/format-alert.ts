@@ -22,6 +22,13 @@ export function formatTelegramAlert(candidate: ProductCandidate, score: DealScor
 🧮 Modèle : ${score.scoringVersion}
 
 🧠 Verdict : ${score.recommendation}
+🎯 Offre maximum : ${money(score.maximumOffer ?? score.estimatedBuyCost)}
+🛡 Seuil sans perte : ${money(score.breakEvenResalePrice ?? score.estimatedResalePrice)}
+🏪 Revente conseillée : ${score.recommendedChannel ?? "eBay"}
+⏳ Délai indicatif : ${score.estimatedSaleDays ?? "à confirmer"} jours
+
+📋 Plan d’action :
+${score.actionPlan ?? "Vérifier les risques et ne pas dépasser l’offre maximum."}
 
 ✅ Pourquoi c’est intéressant :
 ${reasons}

@@ -115,6 +115,11 @@ export interface DealScore {
   estimatedResalePrice: number;
   estimatedNetProfit: number;
   estimatedRoiPercent: number;
+  maximumOffer?: number;
+  breakEvenResalePrice?: number;
+  recommendedChannel?: string;
+  estimatedSaleDays?: number;
+  actionPlan?: string;
   recommendation: Recommendation;
   scoringVersion: "v2";
   marketConfidence: MarketConfidence;
