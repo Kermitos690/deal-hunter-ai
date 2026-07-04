@@ -88,21 +88,33 @@ export const komehyoAdapter: SourceAdapter = {
     const queries = radar.brands.length
       ? radar.brands.map((brand) => [brand, ...radar.models, ...radar.include_keywords].filter(Boolean).join(" "))
       : [[...radar.models, ...radar.include_keywords, radar.category].filter(Boolean).join(" ")];
-    const pages = await Promise.all(queries.slice(0, 6).map(async (query) => {
-      const response = await fetch(`${BASE_URL}/search/?q=${encodeURIComponent(query)}`, {
-        headers: BROWSER_HEADERS,
-        signal: AbortSignal.timeout(15_000),
-        next: { revalidate: 1_800 }
-      });
-      if (!response.ok) throw new Error(`KOMEHYO HTTP ${response.status}`);
-      const html = await response.text();
-      if (html.length < 1_000) throw new Error("KOMEHYO a renvoyé une page de blocage.");
-      return parseKomehyoHtml(html, {
-        brands: radar.brands,
-        models: radar.models,
-        category: radar.category
-      });
+    const results = await Promise.all(queries.slice(0, 6).map(async (query) => {
+      try {
+        const response = await fetch(`${BASE_URL}/search/?q=${encodeURIComponent(query)}`, {
+          headers: BROWSER_HEADERS,
+          signal: AbortSignal.timeout(15_000),
+          next: { revalidate: 1_800 }
+        });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const html = await response.text();
+        if (html.length < 1_000) throw new Error("page de blocage");
+        return {
+          items: parseKomehyoHtml(html, {
+            brands: radar.brands,
+            models: radar.models,
+            category: radar.category
+          }),
+          error: null
+        };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "erreur inconnue";
+        console.warn(`KOMEHYO, requête « ${query} » ignorée: ${message}`);
+        return { items: [] as ProductCandidate[], error: message };
+      }
     }));
-    return [...new Map(pages.flat().map((item) => [item.sourceItemId, item])).values()];
+    if (results.every((result) => result.error)) {
+      throw new Error(`Toutes les requêtes KOMEHYO ont échoué: ${results.map((result) => result.error).join("; ")}`);
+    }
+    return [...new Map(results.flatMap((result) => result.items).map((item) => [item.sourceItemId, item])).values()];
   }
 };
