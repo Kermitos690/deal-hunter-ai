@@ -11,7 +11,8 @@ export default async function AdminPage() {
   const week = new Date(Date.now() - 7 * 86_400_000).toISOString();
   const [
     { count: users }, { count: activeRadars }, { count: alertsToday },
-    { count: scanErrors }, { count: soldComparables }, { data: userRows },
+    { count: scanErrors }, { count: soldComparables }, { count: activeUsers }, { count: suspendedUsers },
+    { count: skippedScans }, { count: savedDeals }, { count: rejectedDeals }, { count: totalAlerts }, { data: userRows },
     { data: recentScans }, { data: recentAlerts }, { data: radars }
   ] = await Promise.all([
     db.from("users").select("*",{count:"exact",head:true}),
@@ -19,7 +20,13 @@ export default async function AdminPage() {
     db.from("alerts").select("*",{count:"exact",head:true}).gte("created_at",day),
     db.from("scan_logs").select("*",{count:"exact",head:true}).eq("status","error").gte("started_at",week),
     db.from("market_comparables").select("*",{count:"exact",head:true}).eq("evidence_type","SOLD"),
-    db.from("users").select("id,telegram_id,email,display_name,role,plan,status,alerts_enabled,created_at,subscriptions(status,plan,current_period_end),radars(id,is_active)").order("created_at",{ascending:false}),
+    db.from("users").select("*",{count:"exact",head:true}).eq("status","active"),
+    db.from("users").select("*",{count:"exact",head:true}).eq("status","suspended"),
+    db.from("scan_logs").select("*",{count:"exact",head:true}).eq("status","skipped").gte("started_at",week),
+    db.from("saved_deals").select("*",{count:"exact",head:true}),
+    db.from("rejected_products").select("*",{count:"exact",head:true}),
+    db.from("alerts").select("*",{count:"exact",head:true}),
+    db.from("users").select("id,telegram_id,email,display_name,role,plan,status,alerts_enabled,created_at,subscriptions(status,plan,current_period_end),radars(id,name,is_active,sources,last_scanned_at)").order("created_at",{ascending:false}),
     db.from("scan_logs").select("id,status,candidates_found,alerts_sent,error_message,started_at,finished_at,radars(name),users(display_name)").order("started_at",{ascending:false}).limit(12),
     db.from("alerts").select("id,status,created_at,users(display_name),products(title,source),deal_scores(total_score,estimated_net_profit,market_confidence)").order("created_at",{ascending:false}).limit(8),
     db.from("radars").select("id,name,is_active,sources,last_scanned_at,next_scan_at,users(display_name)").order("created_at",{ascending:false})
@@ -30,8 +37,9 @@ export default async function AdminPage() {
     <Link href="/dashboard" className="text-slate-400">← Dashboard utilisateur</Link>
     <div className="mt-4 flex flex-wrap items-center justify-between gap-4"><div><div className="badge text-mint">CENTRE DE CONTRÔLE</div><h1 className="mt-3 text-4xl font-black">Deal Hunter Admin</h1><p className="mt-2 text-slate-400">Utilisateurs, sources, scans, données marché et alertes.</p></div><AdminScanButton /></div>
     <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
-      <Stat k="Utilisateurs" v={users??0} hint="comptes créés"/><Stat k="Radars actifs" v={activeRadars??0} hint="tous utilisateurs"/><Stat k="Alertes 24 h" v={alertsToday??0} hint="envoyées ou créées"/><Stat k="Erreurs 7 j" v={scanErrors??0} hint="scans en échec" danger={Boolean(scanErrors)}/><Stat k="Ventes vérifiées" v={soldComparables??0} hint="comparables marché"/>
+      <Stat k="Utilisateurs" v={users??0} hint={`${activeUsers??0} actif(s), ${suspendedUsers??0} suspendu(s)`}/><Stat k="Radars actifs" v={activeRadars??0} hint="tous utilisateurs"/><Stat k="Alertes 24 h" v={alertsToday??0} hint="envoyées ou créées"/><Stat k="Erreurs 7 j" v={scanErrors??0} hint={`${skippedScans??0} scan(s) ignoré(s)`} danger={Boolean(scanErrors)}/><Stat k="Ventes vérifiées" v={soldComparables??0} hint="comparables marché"/>
     </div>
+    <div className="mt-4 grid gap-4 sm:grid-cols-3"><Stat k="Deals sauvegardés" v={savedDeals??0} hint="actions utilisateurs"/><Stat k="Deals rejetés" v={rejectedDeals??0} hint="actions utilisateurs"/><Stat k="Taux actionnable" v={totalAlerts?Math.round(((savedDeals??0)/totalAlerts)*100):0} hint="% sauvegardés / alertes totales"/></div>
     <nav className="mt-6 flex flex-wrap gap-3"><Link className="button-secondary" href="/admin/health">Santé et configuration</Link><a className="button-secondary" href="/api/admin/scan-logs">Exporter les logs JSON</a></nav>
 
     <div className="mt-10 grid gap-6 xl:grid-cols-3">
@@ -51,7 +59,7 @@ export default async function AdminPage() {
       <div className="mt-4 grid gap-4 lg:grid-cols-2">{(userRows??[]).map((user:any)=>{
         const subscription=Array.isArray(user.subscriptions)?user.subscriptions[0]:user.subscriptions;
         const active=(user.radars??[]).filter((radar:any)=>radar.is_active).length;
-        return <div className="card" key={user.id}><div className="flex flex-wrap items-start justify-between gap-4"><div><div className="flex items-center gap-2"><span className="font-bold">{user.display_name}</span>{user.role==="admin"&&<span className="badge text-mint">ADMIN</span>}</div><div className="mt-1 text-sm text-slate-400">{user.email??`Telegram ${user.telegram_id??"—"}`}</div><div className="mt-3 flex flex-wrap gap-2"><span className="badge">{active} radar(s)</span><span className="badge">{user.alerts_enabled?"Alertes actives":"Alertes coupées"}</span><span className="badge">Inscrit {new Date(user.created_at).toLocaleDateString("fr-CH")}</span></div><div className="mt-2 text-xs text-slate-500">Facturation : {subscription?.status??"aucun abonnement"}{subscription?.current_period_end?` • échéance ${new Date(subscription.current_period_end).toLocaleDateString("fr-CH")}`:""}</div></div><AdminUserActions userId={user.id} initialPlan={user.plan} initialStatus={user.status} isPrimaryAdmin={user.telegram_id===process.env.ADMIN_TELEGRAM_ID}/></div></div>;
+        return <div className="card" key={user.id}><div className="flex flex-wrap items-start justify-between gap-4"><div><div className="flex items-center gap-2"><span className="font-bold">{user.display_name}</span>{user.role==="admin"&&<span className="badge text-mint">ADMIN</span>}</div><div className="mt-1 text-sm text-slate-400">{user.email??`Telegram ${user.telegram_id??"—"}`}</div><div className="mt-3 flex flex-wrap gap-2"><span className="badge">{active} radar(s)</span><span className="badge">{user.alerts_enabled?"Alertes actives":"Alertes coupées"}</span><span className="badge">Inscrit {new Date(user.created_at).toLocaleDateString("fr-CH")}</span></div><div className="mt-3 space-y-1">{(user.radars??[]).map((radar:any)=><div className="text-xs text-slate-400" key={radar.id}>{radar.is_active?"🟢":"⏸️"} {radar.name} • {(radar.sources??[]).join(", ")}</div>)}</div><div className="mt-2 text-xs text-slate-500">Facturation : {subscription?.status??"aucun abonnement"}{subscription?.current_period_end?` • échéance ${new Date(subscription.current_period_end).toLocaleDateString("fr-CH")}`:""}</div></div><AdminUserActions userId={user.id} initialPlan={user.plan} initialStatus={user.status} isPrimaryAdmin={user.telegram_id===process.env.ADMIN_TELEGRAM_ID}/></div></div>;
       })}</div>
     </section>
   </main>;
