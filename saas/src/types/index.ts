@@ -120,6 +120,9 @@ export interface DealScore {
   recommendedChannel?: string;
   estimatedSaleDays?: number;
   actionPlan?: string;
+  evidenceGrade?: "A" | "B" | "C" | "D";
+  decisionStatus?: "APPROVED" | "CONDITIONAL" | "REVIEW_REQUIRED" | "REJECTED";
+  decisionRationale?: string;
   recommendation: Recommendation;
   scoringVersion: "v2";
   marketConfidence: MarketConfidence;
