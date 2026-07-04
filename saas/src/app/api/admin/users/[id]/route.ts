@@ -37,6 +37,14 @@ export async function PATCH(request: Request, { params }: Context) {
     .single();
   if (error) return jsonError("Mise à jour impossible.", 500);
 
+  if (parsed.data.status === "suspended") {
+    await serviceDb()
+      .from("auction_reminders")
+      .update({ status: "cancelled_user_suspended" })
+      .eq("user_id", id)
+      .eq("status", "pending");
+  }
+
   await serviceDb().from("admin_logs").insert({
     actor_user_id: auth.user.id,
     action: "user.updated",
