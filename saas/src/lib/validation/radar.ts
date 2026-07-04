@@ -2,7 +2,7 @@ import { z } from "zod";
 
 const conditions = z.enum(["NEW", "A", "B", "C", "REPAIR", "UNKNOWN"]);
 const saleTypes = z.enum(["BUY_NOW", "AUCTION"]);
-const sources = z.enum(["ebay", "email-alerts", "rss"]);
+const sources = z.enum(["ebay", "komehyo", "email-alerts", "rss"]);
 const countries = z.enum(["CH","FR","DE","IT","GB","US","CA","AU","JP","EU"]);
 
 export const radarSchema = z.object({

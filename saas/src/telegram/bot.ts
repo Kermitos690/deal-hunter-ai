@@ -6,7 +6,7 @@ import { parseAuctionResponse } from "@/telegram/auction-response";
 import { createSessionToken } from "@/lib/security/session";
 import { categoryKeyboard, conditionKeyboard, frequencyKeyboard, parseBrands, positiveNumber, sourceKeyboard } from "@/telegram/radar-wizard";
 
-const ACTIVE_RADAR_SOURCES = ["ebay", "email-alerts", "rss"];
+const ACTIVE_RADAR_SOURCES = ["ebay", "komehyo", "email-alerts", "rss"];
 
 export function scanResultText(result: {
   candidatesFound: number;
@@ -146,7 +146,7 @@ export function createBot() {
   bot.action(/^wizsrc:(.+)$/,async(ctx)=>{
     const telegramId=String(ctx.from.id); const {data:session}=await serviceDb().from("telegram_sessions").select("*").eq("telegram_id",telegramId).maybeSingle();
     if(session?.state!=="wizard:source") return ctx.answerCbQuery();
-    const sources=ctx.match[1]==="all"?ACTIVE_RADAR_SOURCES:["ebay"];
+    const sources=ctx.match[1]==="all"?ACTIVE_RADAR_SOURCES:[ctx.match[1]];
     await setSession(telegramId,"wizard:margin",{...(session.payload??{}),sources}); await ctx.answerCbQuery();
     await ctx.reply("6/7 — Indique la marge nette minimum souhaitée en CHF.\nExemple : 50");
   });

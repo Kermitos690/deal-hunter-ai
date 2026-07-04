@@ -10,7 +10,7 @@ const checked = (form: FormData, name: string) => form.getAll(name).map(String);
 
 const CONDITIONS = [["NEW","Neuf"],["A","Excellent"],["B","Bon"],["C","Usagé"],["REPAIR","À réparer"],["UNKNOWN","Non précisé"]];
 const SALE_TYPES = [["BUY_NOW","Achat immédiat"],["AUCTION","Enchère"]];
-const SOURCES = [["ebay","eBay mondial"],["email-alerts","Alertes e-mail"],["rss","Flux maisons d’enchères"]];
+const SOURCES = [["ebay","eBay mondial"],["komehyo","KOMEHYO Japon"],["email-alerts","Alertes e-mail"],["rss","Flux maisons d’enchères"]];
 const COUNTRIES = [["CH","Suisse"],["FR","France"],["DE","Allemagne"],["IT","Italie"],["GB","Royaume-Uni"],["US","États-Unis"],["CA","Canada"],["AU","Australie"],["JP","Japon"],["EU","Autres pays UE"]];
 const CATEGORIES = ["Montres","Sacs et accessoires","Sneakers","Cartes à collectionner","Bijoux","Électronique","Mode","Objets de collection","Pièces détachées","Autre"];
 
