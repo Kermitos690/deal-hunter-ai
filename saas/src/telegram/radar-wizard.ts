@@ -29,7 +29,7 @@ export const conditionKeyboard = { inline_keyboard:[
   [{text:"🛠 Usagé / réparation",callback_data:"wizcond:B,C,REPAIR"},{text:"🌐 Tous les états",callback_data:"wizcond:NEW,A,B,C,REPAIR,UNKNOWN"}]
 ]};
 export const sourceKeyboard = { inline_keyboard:[
-  [{text:"🌍 eBay mondial",callback_data:"wizsrc:ebay"}],
+  [{text:"🌍 eBay mondial",callback_data:"wizsrc:ebay"},{text:"🇯🇵 KOMEHYO",callback_data:"wizsrc:komehyo"}],
   [{text:"🔎 Toutes les sources actives",callback_data:"wizsrc:all"}]
 ]};
 export const frequencyKeyboard = { inline_keyboard:[

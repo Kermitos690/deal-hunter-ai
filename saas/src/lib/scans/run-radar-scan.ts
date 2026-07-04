@@ -153,6 +153,34 @@ export async function runRadarScan(radarId: string, ownerId?: string) {
         console.warn("Candidate ignoré, conversion CHF impossible:", fxError);
       }
     }
+    const komehyoComparables = convertedCandidates
+      .filter((candidate) => candidate.source === "komehyo")
+      .map((candidate) => ({
+        source: "komehyo_active_listing",
+        external_id: candidate.sourceItemId,
+        title: candidate.title,
+        brand: candidate.brand ?? null,
+        model: candidate.model ?? null,
+        category: candidate.category ?? radar.category,
+        condition_grade: candidate.conditionGrade ?? "UNKNOWN",
+        sold_price: candidate.priceAmount,
+        currency: "CHF",
+        sold_at: null,
+        evidence_url: candidate.productUrl,
+        country: "JP",
+        evidence_type: "ACTIVE_LISTING",
+        confidence: "LOW",
+        match_score: candidate.model ? 0.7 : 0.5,
+        fetched_at: new Date().toISOString(),
+        raw_payload: candidate.rawPayload ?? {}
+      }));
+    if (komehyoComparables.length) {
+      const { error: comparableError } = await db.from("market_comparables")
+        .upsert(komehyoComparables, { onConflict: "source,external_id" });
+      if (comparableError) {
+        console.warn("Comparables KOMEHYO non enregistrés:", comparableError.message);
+      }
+    }
     const since = new Date(Date.now() - 86_400_000).toISOString();
     const { count: alertsToday } = await db
       .from("alerts")
