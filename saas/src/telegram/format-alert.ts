@@ -1,4 +1,5 @@
 import type { DealScore, ProductCandidate } from "@/types";
+import { decisionLabel } from "@/scoring/decision-framework";
 
 const money = (value: number) => `${value.toFixed(0)} CHF`;
 
@@ -7,7 +8,12 @@ export function formatTelegramAlert(candidate: ProductCandidate, score: DealScor
   const warnings = score.warnings.length
     ? score.warnings.slice(0, 3).map((warning) => `• ${warning}`).join("\n")
     : "• Aucun signal critique automatique. Vérification humaine requise.";
-  return `🚨 DEAL HUNTER AI — OPPORTUNITÉ DÉTECTÉE
+  const status = score.decisionStatus ?? "REVIEW_REQUIRED";
+  return `DEAL HUNTER AI — NOTE D’OPPORTUNITÉ
+
+DÉCISION : ${decisionLabel[status]}
+NIVEAU DE PREUVE : ${score.evidenceGrade ?? "D"}
+${score.decisionRationale ?? "Analyse humaine complémentaire requise."}
 
 👜 Produit : ${candidate.title}
 🏷️ Marque : ${candidate.brand ?? "Non précisée"}
@@ -21,11 +27,11 @@ export function formatTelegramAlert(candidate: ProductCandidate, score: DealScor
 🔎 Confiance marché : ${score.marketConfidence} (${score.comparableCount} comparables)
 🧮 Modèle : ${score.scoringVersion}
 
-🧠 Verdict : ${score.recommendation}
+🧠 Signal moteur : ${score.recommendation}
 🎯 Offre maximum : ${money(score.maximumOffer ?? score.estimatedBuyCost)}
 🛡 Seuil sans perte : ${money(score.breakEvenResalePrice ?? score.estimatedResalePrice)}
 🏪 Revente conseillée : ${score.recommendedChannel ?? "eBay"}
-⏳ Délai indicatif : ${score.estimatedSaleDays ?? "à confirmer"} jours
+⏳ Délai indicatif : ${score.estimatedSaleDays ? `${score.estimatedSaleDays} jours` : "à confirmer"}
 
 📋 Plan d’action :
 ${score.actionPlan ?? "Vérifier les risques et ne pas dépasser l’offre maximum."}
@@ -36,7 +42,7 @@ ${reasons}
 ⚠️ Points à vérifier :
 ${warnings}
 
-Authenticité à vérifier : Deal Hunter AI ne garantit jamais l’authenticité.`;
+AVERTISSEMENT : estimation indicative, non garantie. Authenticité à vérifier, ainsi que l’état, les frais et les conditions de retour avant tout engagement.`;
 }
 
 export function auctionReminderText(
