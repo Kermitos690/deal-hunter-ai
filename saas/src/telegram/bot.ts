@@ -103,6 +103,8 @@ export function createBot() {
 
   bot.action(/^wizcat:(.+)$/,async(ctx)=>{
     const telegramId=String(ctx.from.id); const category=ctx.match[1];
+    const {data:session}=await serviceDb().from("telegram_sessions").select("state").eq("telegram_id",telegramId).maybeSingle();
+    if(session?.state!=="wizard:category") return ctx.answerCbQuery();
     await setSession(telegramId,"wizard:brand",{category}); await ctx.answerCbQuery();
     await ctx.reply("2/7 — Écris la ou les marques recherchées.\nExemple : Omega Rolex TAG Heuer\n\nLes virgules ne sont pas obligatoires.");
   });
