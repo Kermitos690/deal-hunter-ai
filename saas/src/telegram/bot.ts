@@ -7,6 +7,7 @@ import { createSessionToken } from "@/lib/security/session";
 import { categoryKeyboard, conditionKeyboard, frequencyKeyboard, parseBrands, positiveNumber, sourceKeyboard } from "@/telegram/radar-wizard";
 
 const ACTIVE_RADAR_SOURCES = ["ebay", "komehyo", "email-alerts", "rss"];
+const SCAN_RESULT_FORMAT_VERSION = "scan-v2";
 
 export function scanResultText(result: {
   candidatesFound: number;
@@ -31,7 +32,7 @@ export function scanResultText(result: {
     : alertsCreated
       ? "Des opportunités existent, mais Telegram n’a pas pu les envoyer. Vérifie le bot, ton compte Telegram et les alertes du radar."
       : "Aucune annonce ne respecte encore tous les critères de ce radar.";
-  return `✅ Scan terminé\n\n🔎 ${result.candidatesFound} annonce(s) analysée(s)\n🚨 ${alertsCreated} opportunité(s) créée(s)\n📨 ${result.alertsSent} alerte(s) Telegram envoyée(s)${telegramSkipped ? `\n⚠️ ${telegramSkipped} alerte(s) non envoyée(s) côté Telegram` : ""}\n\n${conclusion}`;
+  return `✅ Scan terminé\n\n🔎 ${result.candidatesFound} annonce(s) analysée(s)\n🚨 ${alertsCreated} opportunité(s) créée(s)\n📨 ${result.alertsSent} alerte(s) Telegram envoyée(s)${telegramSkipped ? `\n⚠️ ${telegramSkipped} alerte(s) non envoyée(s) côté Telegram` : ""}\n\n${conclusion}\n\n_${SCAN_RESULT_FORMAT_VERSION}_`;
 }
 
 async function scanAndReply(ctx: any, radarId: string, userId: string) {
