@@ -59,7 +59,7 @@ export async function runRadarScan(radarId: string, ownerId?: string) {
       finished_at: new Date().toISOString(),
       error_message: "Scan ignoré : utilisateur suspendu."
     });
-    return { candidatesFound: 0, alertsSent: 0, skipped: true, reason: "user_suspended" };
+    return { candidatesFound: 0, alertsCreated: 0, alertsSent: 0, telegramSkipped: 0, skipped: true, reason: "user_suspended" };
   }
 
   const lockToken = randomUUID();
@@ -77,7 +77,7 @@ export async function runRadarScan(radarId: string, ownerId?: string) {
       finished_at: new Date().toISOString(),
       error_message: "Scan ignoré : radar déjà verrouillé."
     });
-    return { candidatesFound: 0, alertsSent: 0, skipped: true, reason: "radar_locked" };
+    return { candidatesFound: 0, alertsCreated: 0, alertsSent: 0, telegramSkipped: 0, skipped: true, reason: "radar_locked" };
   }
   await db.from("scan_logs").update({
     status: "error",
@@ -99,7 +99,9 @@ export async function runRadarScan(radarId: string, ownerId?: string) {
   }
 
   let candidatesFound = 0;
+  let alertsCreated = 0;
   let alertsSent = 0;
+  let telegramSkipped = 0;
   try {
     const enabledAdapters = adaptersFor(radar.sources);
     if (!enabledAdapters.length) {
@@ -109,7 +111,7 @@ export async function runRadarScan(radarId: string, ownerId?: string) {
         finished_at: now,
         error_message: `Scan ignoré : aucune source active parmi [${radar.sources.join(", ")}].`
       }).eq("id", log.id);
-      return { candidatesFound: 0, alertsSent: 0, skipped: true, reason: "no_enabled_source" };
+      return { candidatesFound: 0, alertsCreated: 0, alertsSent: 0, telegramSkipped: 0, skipped: true, reason: "no_enabled_source" };
     }
     const sourceResults = await Promise.all(enabledAdapters.map(async (adapter) => {
       const startedAt = new Date();
@@ -333,31 +335,60 @@ export async function runRadarScan(radarId: string, ownerId?: string) {
         .single();
       if (alertError) throw alertError;
 
-      if (user.telegram_id && user.alerts_enabled && radar.alerts_enabled) {
+      alertsCreated += 1;
+      remaining -= 1;
+
+      let alertStatus = "created";
+      let telegramMessageId: string | null = null;
+      let sentAt: string | null = null;
+      let stopAfterCurrentAlert = false;
+
+      if (!user.telegram_id) {
+        alertStatus = "telegram_missing_user";
+        telegramSkipped += 1;
+      } else if (!user.alerts_enabled) {
+        alertStatus = "user_alerts_disabled";
+        telegramSkipped += 1;
+      } else if (!radar.alerts_enabled) {
+        alertStatus = "radar_alerts_disabled";
+        telegramSkipped += 1;
+      } else {
         const { data: liveUser } = await db.from("users").select("status").eq("id", user.id).maybeSingle();
         if (!userCanRunActivity(liveUser?.status)) {
+          alertStatus = "user_suspended";
+          telegramSkipped += 1;
+          stopAfterCurrentAlert = true;
           await db.from("scan_logs").update({
             error_message: "Scan arrêté avant alerte : utilisateur suspendu."
           }).eq("id", log.id);
-          break;
+        } else {
+          const result = await sendDealAlert(user.telegram_id, alert.id, candidate, score);
+          telegramMessageId = result.messageId;
+          alertStatus = result.skipped ? result.reason : "sent";
+          if (result.skipped) {
+            telegramSkipped += 1;
+          } else {
+            alertsSent += 1;
+            sentAt = new Date().toISOString();
+          }
         }
-        const result = await sendDealAlert(user.telegram_id, alert.id, candidate, score);
-        await db
-          .from("alerts")
-          .update({
-            telegram_message_id: result.messageId,
-            status: result.skipped ? "telegram_not_configured" : "sent",
-            sent_at: new Date().toISOString()
-          })
-          .eq("id", alert.id)
-          .eq("user_id", user.id);
       }
+
+      await db
+        .from("alerts")
+        .update({
+          telegram_message_id: telegramMessageId,
+          status: alertStatus,
+          sent_at: sentAt
+        })
+        .eq("id", alert.id)
+        .eq("user_id", user.id);
+
       await db.from("user_seen_products").upsert({
         user_id: user.id,
         product_id: product.id
       });
-      alertsSent += 1;
-      remaining -= 1;
+      if (stopAfterCurrentAlert) break;
     }
 
     const now = new Date();
@@ -371,7 +402,7 @@ export async function runRadarScan(radarId: string, ownerId?: string) {
         alerts_sent: alertsSent
       }).eq("id", log.id)
     ]);
-    return { candidatesFound, alertsSent };
+    return { candidatesFound, alertsCreated, alertsSent, telegramSkipped };
   } catch (scanError) {
     await db.from("scan_logs").update({
       status: "error",
