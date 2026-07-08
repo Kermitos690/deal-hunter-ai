@@ -3,14 +3,18 @@ import { formatTelegramAlert } from "./format-alert";
 import { serviceDb } from "@/lib/db/server";
 import type { DealScore, ProductCandidate } from "@/types";
 
+export type TelegramAlertResult =
+  | { messageId: string; skipped: false; reason?: never }
+  | { messageId: null; skipped: true; reason: "telegram_token_missing" };
+
 export async function sendDealAlert(
   telegramId: string,
   alertId: string,
   candidate: ProductCandidate,
   score: DealScore
-) {
+): Promise<TelegramAlertResult> {
   const token = process.env.TELEGRAM_BOT_TOKEN;
-  if (!token) return { messageId: null, skipped: true };
+  if (!token) return { messageId: null, skipped: true, reason: "telegram_token_missing" };
   const bot = new Telegraf(token);
   const buttons = {
     inline_keyboard: [
