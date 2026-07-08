@@ -20,17 +20,23 @@ jobs:
       - name: Run due radars
         env:
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          APP_BASE_URL: ${{ secrets.APP_BASE_URL || 'https://deal-hunter-ai.vercel.app' }}
         run: |
           set -euo pipefail
+          base_url="${APP_BASE_URL%/}"
           response="$(curl --fail --silent --show-error --retry 2 --max-time 360 \
             -H "Authorization: Bearer ${CRON_SECRET}" \
-            https://deal-hunter-ai.vercel.app/api/cron/scan)"
-          printf '%s' "$response" | jq -e 'all(.results[]?; .ok == true)'
+            "${base_url}/api/cron/scan")"
+          printf '%s\n' "$response"
+          printf '%s' "$response" | jq -e '(.results | type == "array") and all(.results[]?; .ok == true)'
 
       - name: Run auction reminders
         env:
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          APP_BASE_URL: ${{ secrets.APP_BASE_URL || 'https://deal-hunter-ai.vercel.app' }}
         run: |
+          set -euo pipefail
+          base_url="${APP_BASE_URL%/}"
           curl --fail --silent --show-error --retry 2 --max-time 120 \
             -H "Authorization: Bearer ${CRON_SECRET}" \
-            https://deal-hunter-ai.vercel.app/api/cron/reminders
+            "${base_url}/api/cron/reminders"
