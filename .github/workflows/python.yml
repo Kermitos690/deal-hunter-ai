@@ -1,4 +1,4 @@
-name: Deal Hunter AI Radar
+name: "[DISABLED] Legacy Deal Hunter Python"
 
 on:
   workflow_dispatch:
@@ -32,15 +32,13 @@ on:
         required: false
         default: ""
 
-  schedule:
-    - cron: "*/15 * * * *"
-
 concurrency:
-  group: deal-hunter-ai-radar
+  group: deal-hunter-ai-legacy-disabled
   cancel-in-progress: true
 
 jobs:
   run:
+    if: ${{ false }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
@@ -66,7 +64,7 @@ jobs:
         if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.mode != 'manual' }}
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID || secrets.DEAL_HUNTER_ADMIN_CHAT_ID || secrets.TELEGRAM_ADMIN_CHAT_ID || secrets.TEST_CHAT_ID }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           SERPAPI_API_KEY: ${{ secrets.SERPAPI_API_KEY }}
 
           EBAY_CLIENT_ID: ${{ secrets.EBAY_CLIENT_ID }}
@@ -90,8 +88,6 @@ jobs:
           WATCH_MIN_SCORE: ${{ secrets.WATCH_MIN_SCORE }}
           MARKET_WATCH_MIN_SCORE: ${{ secrets.MARKET_WATCH_MIN_SCORE }}
           MIN_SELLER_CONFIDENCE_FOR_AUTO_DEAL: ${{ secrets.MIN_SELLER_CONFIDENCE_FOR_AUTO_DEAL }}
-          MIN_MARKET_EVIDENCE_FOR_SOLID_DEAL: ${{ secrets.MIN_MARKET_EVIDENCE_FOR_SOLID_DEAL }}
-          REQUIRE_MARKET_EVIDENCE_FOR_SOLID_DEAL: ${{ secrets.REQUIRE_MARKET_EVIDENCE_FOR_SOLID_DEAL }}
 
           MAX_REFERENCE_MESSAGES: ${{ secrets.MAX_REFERENCE_MESSAGES }}
           MAX_DEAL_MESSAGES: ${{ secrets.MAX_DEAL_MESSAGES }}
@@ -112,7 +108,7 @@ jobs:
         if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.mode == 'manual' }}
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID || secrets.DEAL_HUNTER_ADMIN_CHAT_ID || secrets.TELEGRAM_ADMIN_CHAT_ID || secrets.TEST_CHAT_ID }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
 
           USD_TO_CHF: ${{ secrets.USD_TO_CHF }}
           EUR_TO_CHF: ${{ secrets.EUR_TO_CHF }}
@@ -123,8 +119,6 @@ jobs:
           WATCH_MIN_SCORE: ${{ secrets.WATCH_MIN_SCORE }}
           MARKET_WATCH_MIN_SCORE: ${{ secrets.MARKET_WATCH_MIN_SCORE }}
           MIN_SELLER_CONFIDENCE_FOR_AUTO_DEAL: ${{ secrets.MIN_SELLER_CONFIDENCE_FOR_AUTO_DEAL }}
-          MIN_MARKET_EVIDENCE_FOR_SOLID_DEAL: ${{ secrets.MIN_MARKET_EVIDENCE_FOR_SOLID_DEAL }}
-          REQUIRE_MARKET_EVIDENCE_FOR_SOLID_DEAL: ${{ secrets.REQUIRE_MARKET_EVIDENCE_FOR_SOLID_DEAL }}
 
           SELLING_FEE_RATE: ${{ secrets.SELLING_FEE_RATE }}
           EXPORT_SHIPPING_BUFFER_CHF: ${{ secrets.EXPORT_SHIPPING_BUFFER_CHF }}
