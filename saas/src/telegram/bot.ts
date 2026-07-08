@@ -11,6 +11,8 @@ const ACTIVE_RADAR_SOURCES = ["ebay", "komehyo", "email-alerts", "rss"];
 export function scanResultText(result: {
   candidatesFound: number;
   alertsSent: number;
+  alertsCreated?: number;
+  telegramSkipped?: number;
   skipped?: boolean;
   reason?: string;
 }) {
@@ -22,7 +24,14 @@ export function scanResultText(result: {
         : "aucune source active n’est disponible";
     return `⏭️ Scan non lancé : ${reason}.`;
   }
-  return `✅ Scan terminé\n\n🔎 ${result.candidatesFound} annonce(s) analysée(s)\n🚨 ${result.alertsSent} opportunité(s) envoyée(s)\n\n${result.alertsSent ? "Les meilleures opportunités sont affichées ci-dessus." : "Aucune annonce ne respecte encore tous les critères de ce radar."}`;
+  const alertsCreated = result.alertsCreated ?? result.alertsSent;
+  const telegramSkipped = result.telegramSkipped ?? Math.max(0, alertsCreated - result.alertsSent);
+  const conclusion = result.alertsSent
+    ? "Les meilleures opportunités sont affichées ci-dessus."
+    : alertsCreated
+      ? "Des opportunités existent, mais Telegram n’a pas pu les envoyer. Vérifie le bot, ton compte Telegram et les alertes du radar."
+      : "Aucune annonce ne respecte encore tous les critères de ce radar.";
+  return `✅ Scan terminé\n\n🔎 ${result.candidatesFound} annonce(s) analysée(s)\n🚨 ${alertsCreated} opportunité(s) créée(s)\n📨 ${result.alertsSent} alerte(s) Telegram envoyée(s)${telegramSkipped ? `\n⚠️ ${telegramSkipped} alerte(s) non envoyée(s) côté Telegram` : ""}\n\n${conclusion}`;
 }
 
 async function scanAndReply(ctx: any, radarId: string, userId: string) {
