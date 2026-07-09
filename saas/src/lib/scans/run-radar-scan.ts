@@ -8,8 +8,14 @@ import { PLAN_LIMITS } from "@/plans/limits";
 import { candidateInChf } from "@/lib/fx";
 import { randomUUID } from "node:crypto";
 import { SCAN_LOCK_TTL_SECONDS, userCanRunActivity } from "@/lib/scans/scan-policy";
-import { candidateMatchesRadar, scoreMatchesRadar } from "@/lib/scans/radar-filters";
+import { candidateMismatchReasons, scoreMismatchReasons } from "@/lib/scans/radar-filters";
 import type { AppUser, ProductCandidate, Radar } from "@/types";
+
+type RejectionSummary = Record<string, number>;
+
+function countRejections(summary: RejectionSummary, reasons: string[]) {
+  for (const reason of reasons) summary[reason] = (summary[reason] ?? 0) + 1;
+}
 
 function comparableListings(candidate: ProductCandidate, candidates: ProductCandidate[]) {
   const brand = candidate.brand?.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase();
@@ -59,7 +65,7 @@ export async function runRadarScan(radarId: string, ownerId?: string) {
       finished_at: new Date().toISOString(),
       error_message: "Scan ignoré : utilisateur suspendu."
     });
-    return { candidatesFound: 0, alertsCreated: 0, alertsSent: 0, telegramSkipped: 0, skipped: true, reason: "user_suspended" };
+    return { candidatesFound: 0, alertsCreated: 0, alertsSent: 0, telegramSkipped: 0, rejectionSummary: {}, skipped: true, reason: "user_suspended" };
   }
 
   const lockToken = randomUUID();
@@ -77,7 +83,7 @@ export async function runRadarScan(radarId: string, ownerId?: string) {
       finished_at: new Date().toISOString(),
       error_message: "Scan ignoré : radar déjà verrouillé."
     });
-    return { candidatesFound: 0, alertsCreated: 0, alertsSent: 0, telegramSkipped: 0, skipped: true, reason: "radar_locked" };
+    return { candidatesFound: 0, alertsCreated: 0, alertsSent: 0, telegramSkipped: 0, rejectionSummary: {}, skipped: true, reason: "radar_locked" };
   }
   await db.from("scan_logs").update({
     status: "error",
@@ -102,6 +108,7 @@ export async function runRadarScan(radarId: string, ownerId?: string) {
   let alertsCreated = 0;
   let alertsSent = 0;
   let telegramSkipped = 0;
+  const rejectionSummary: RejectionSummary = {};
   try {
     const enabledAdapters = adaptersFor(radar.sources);
     if (!enabledAdapters.length) {
@@ -111,7 +118,7 @@ export async function runRadarScan(radarId: string, ownerId?: string) {
         finished_at: now,
         error_message: `Scan ignoré : aucune source active parmi [${radar.sources.join(", ")}].`
       }).eq("id", log.id);
-      return { candidatesFound: 0, alertsCreated: 0, alertsSent: 0, telegramSkipped: 0, skipped: true, reason: "no_enabled_source" };
+      return { candidatesFound: 0, alertsCreated: 0, alertsSent: 0, telegramSkipped: 0, rejectionSummary, skipped: true, reason: "no_enabled_source" };
     }
     const sourceResults = await Promise.all(enabledAdapters.map(async (adapter) => {
       const startedAt = new Date();
@@ -152,6 +159,7 @@ export async function runRadarScan(radarId: string, ownerId?: string) {
       try {
         convertedCandidates.push(await candidateInChf(candidate));
       } catch (fxError) {
+        countRejections(rejectionSummary, ["currency_conversion_failed"]);
         console.warn("Candidate ignoré, conversion CHF impossible:", fxError);
       }
     }
@@ -192,7 +200,15 @@ export async function runRadarScan(radarId: string, ownerId?: string) {
     let remaining = Math.max(0, PLAN_LIMITS[user.plan].alertsPerDay - (alertsToday ?? 0));
 
     for (const candidate of convertedCandidates) {
-      if (!candidateMatchesRadar(candidate, radar) || remaining <= 0) continue;
+      if (remaining <= 0) {
+        countRejections(rejectionSummary, ["daily_alert_limit_reached"]);
+        continue;
+      }
+      const candidateReasons = candidateMismatchReasons(candidate, radar);
+      if (candidateReasons.length) {
+        countRejections(rejectionSummary, candidateReasons);
+        continue;
+      }
       const normalizedUrl = normalizeUrl(candidate.productUrl);
       const fingerprint = productFingerprint(candidate);
       const { data: product, error: productError } = await db
@@ -244,7 +260,14 @@ export async function runRadarScan(radarId: string, ownerId?: string) {
         db.from("user_seen_products").select("id").eq("user_id", user.id).eq("product_id", product.id).maybeSingle(),
         db.from("rejected_products").select("id").eq("user_id", user.id).eq("product_id", product.id).maybeSingle()
       ]);
-      if (seen || rejected) continue;
+      if (seen) {
+        countRejections(rejectionSummary, ["already_seen"]);
+        continue;
+      }
+      if (rejected) {
+        countRejections(rejectionSummary, ["rejected_by_user"]);
+        continue;
+      }
 
       let comparableQuery = db
         .from("market_comparables")
@@ -257,7 +280,11 @@ export async function runRadarScan(radarId: string, ownerId?: string) {
         ...comparableListings(candidate, convertedCandidates)
       ]);
       const score = calculateDealScore(candidate, radar, market);
-      if (!scoreMatchesRadar(score, radar)) continue;
+      const scoreReasons = scoreMismatchReasons(score, radar);
+      if (scoreReasons.length) {
+        countRejections(rejectionSummary, scoreReasons);
+        continue;
+      }
 
       const { data: scoreRow, error: scoreError } = await db
         .from("deal_scores")
@@ -399,10 +426,11 @@ export async function runRadarScan(radarId: string, ownerId?: string) {
         status: "success",
         finished_at: now.toISOString(),
         candidates_found: candidatesFound,
-        alerts_sent: alertsSent
+        alerts_sent: alertsSent,
+        error_message: Object.keys(rejectionSummary).length ? JSON.stringify({ rejectionSummary }) : null
       }).eq("id", log.id)
     ]);
-    return { candidatesFound, alertsCreated, alertsSent, telegramSkipped };
+    return { candidatesFound, alertsCreated, alertsSent, telegramSkipped, rejectionSummary };
   } catch (scanError) {
     await db.from("scan_logs").update({
       status: "error",
