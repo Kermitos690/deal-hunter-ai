@@ -39,12 +39,21 @@ describe("Tutti source", () => {
     const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async (url) => {
       const href = String(url);
       if (href.includes("/fr/q?query=")) {
-        return new Response('<a href="/fr/vi/geneve/vetements-accessoires/montres-bijoux/omega-vintage/81830566">Omega</a>');
+        return new Response(`
+          <div data-private-srp-listing-item-id="81830566">
+            <a href="/fr/vi/geneve/vetements-accessoires/montres-bijoux/omega-vintage/81830566">
+              <img aria-label="Omega Vintage" src="https://c.tutti.ch/thumbnail/7991841365.jpg" />
+            </a>
+            <h2><a href="/fr/vi/geneve/vetements-accessoires/montres-bijoux/omega-vintage/81830566"><div>Omega Vintage</div></a></h2>
+            <span>499.-</span>
+          </div>
+        `);
       }
       return new Response(`
         <html><head>
           <title>Omega Vintage Canton Genève - tutti.ch</title>
           <meta name="description" content="Omega Genève Vintage calibre 613" />
+          <meta name="robots" content="index,follow" />
           <meta property="og:image:secure_url" content="https://c.tutti.ch/big/7991841365.jpg" />
         </head><body>
           <button aria-label="mark as favorite">favori</button>
@@ -70,7 +79,12 @@ describe("Tutti source", () => {
     const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async (url) => {
       const href = String(url);
       if (href.includes("/fr/q?query=")) {
-        return new Response('<a href="/fr/vi/geneve/vetements-accessoires/montres-bijoux/omega-vintage/81830566">Omega</a>');
+        return new Response(`
+          <div data-private-srp-listing-item-id="81830566">
+            <a href="/fr/vi/geneve/vetements-accessoires/montres-bijoux/omega-vintage/81830566">Omega</a>
+            <span>499.-</span>
+          </div>
+        `);
       }
       return new Response("<html><body><h1>Omega</h1><span>499.-</span>Déjà vendu</body></html>");
     });

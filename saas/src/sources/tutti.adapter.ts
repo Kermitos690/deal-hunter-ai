@@ -8,7 +8,7 @@ const BROWSER_HEADERS = {
   "Accept-Language": "fr-CH,fr;q=0.9,de-CH;q=0.8,it-CH;q=0.7,en;q=0.6"
 };
 
-const INACTIVE_RE = /annonce supprim(?:e|é)e|annonce expir(?:e|é)e|n.est plus disponible|déjà vendu|deja vendu|\bvendu\b|\bsold\b|not available|gelöscht|abgelaufen|verkauft/i;
+const INACTIVE_TITLE_RE = /annonce supprim(?:e|é)e|annonce expir(?:e|é)e|n.est plus disponible|déjà vendu|deja vendu|\bvendu\b|\bsold\b|not available|gelöscht|abgelaufen|verkauft/i;
 const ACTIVE_RE = /tutti\.ch|mark as favorite|annonc(?:e|es)|contacter|kontakt|message|prix|preis|chf|\.-/i;
 
 function decodeHtml(value: string) {
@@ -72,26 +72,52 @@ function imageUrlsFrom(html: string) {
     .slice(0, 10);
 }
 
-function detailLinks(html: string) {
-  return [...new Set(Array.from(html.matchAll(/href="([^"]*\/fr\/vi\/[^"?#]+\/\d+)"/g))
-    .map((match) => new URL(match[1], BASE_URL).toString()))]
-    .slice(0, 24);
+type SearchCard = {
+  url: string;
+  id: string;
+  title?: string;
+  price?: number;
+  description?: string;
+  imageUrls: string[];
+};
+
+function searchCards(html: string): SearchCard[] {
+  const cards = Array.from(html.matchAll(/<div data-private-srp-listing-item-id="(\d+)"[\s\S]*?(?=<div data-private-srp-listing-item-id="|$)/g));
+  const parsed: SearchCard[] = [];
+  for (const match of cards) {
+    const id = match[1];
+    const block = match[0];
+    const href = block.match(/href="([^"]*\/fr\/vi\/[^"?#]+\/\d+)"/)?.[1];
+    if (!href) continue;
+    const title = decodeHtml(block.match(/aria-label="([^"]+)"/)?.[1]
+      ?? block.match(/<h2[\s\S]*?<a[^>]*>[\s\S]*?<div[^>]*>([\s\S]*?)<\/div>/i)?.[1]
+      ?? "");
+    parsed.push({
+      url: new URL(href, BASE_URL).toString(),
+      id,
+      title: title || undefined,
+      price: parsePrice(block) ?? undefined,
+      description: decodeHtml(block.match(/<span class="[^"]*">([\s\S]{20,600}?)<\/span>/i)?.[1] ?? ""),
+      imageUrls: imageUrlsFrom(block)
+    });
+  }
+  return parsed.slice(0, 10);
 }
 
-async function detailCandidate(url: string, radar: Radar): Promise<ProductCandidate | null> {
-  const response = await fetch(url, {
+async function detailCandidate(card: SearchCard, radar: Radar): Promise<ProductCandidate | null> {
+  const response = await fetch(card.url, {
     headers: BROWSER_HEADERS,
-    signal: AbortSignal.timeout(12_000),
+    signal: AbortSignal.timeout(16_000),
     next: { revalidate: 900 }
   });
   if (!response.ok) return null;
   const html = await response.text();
-  const text = normalized(html);
-  if (INACTIVE_RE.test(text) || !ACTIVE_RE.test(text)) return null;
-  const price = parsePrice(html);
+  const rawTitle = decodeHtml(html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1] ?? html.match(/<meta property="og:title" content="([^"]+)"/i)?.[1] ?? "");
+  if (INACTIVE_TITLE_RE.test(rawTitle) || !ACTIVE_RE.test(html) || !/<meta name="robots" content="index,follow"/i.test(html)) return null;
+  const price = card.price ?? parsePrice(html) ?? null;
   if (!price) return null;
-  const title = titleFrom(html);
-  const id = url.match(/\/(\d+)\/?$/)?.[1] ?? url;
+  const title = titleFrom(html) || card.title || "Annonce Tutti";
+  const id = card.id;
   return {
     source: "tutti",
     sourceItemId: id,
@@ -106,10 +132,10 @@ async function detailCandidate(url: string, radar: Radar): Promise<ProductCandid
     conditionGrade: conditionGrade(html),
     sellerCountry: "CH",
     itemCountry: "CH",
-    productUrl: url,
-    imageUrls: imageUrlsFrom(html),
-    description: descriptionFrom(html),
-    rawPayload: { marketplace: "Tutti Switzerland", activeVerified: true, availabilityEvidence: "detail_page_price_and_no_inactive_marker" }
+    productUrl: card.url,
+    imageUrls: imageUrlsFrom(html).length ? imageUrlsFrom(html) : card.imageUrls,
+    description: descriptionFrom(html) || card.description,
+    rawPayload: { marketplace: "Tutti Switzerland", activeVerified: true, availabilityEvidence: "search_price_plus_detail_index_follow_no_inactive_marker" }
   };
 }
 
@@ -130,8 +156,15 @@ export const tuttiAdapter: SourceAdapter = {
         });
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const html = await response.text();
-        const links = detailLinks(html);
-        const items = await Promise.all(links.map((url) => detailCandidate(url, radar)));
+        const cards = searchCards(html);
+        const items = await Promise.all(cards.map(async (card) => {
+          try {
+            return await detailCandidate(card, radar);
+          } catch (error) {
+            console.warn(`Tutti, annonce ${card.id} ignorée: ${error instanceof Error ? error.message : "erreur détail"}`);
+            return null;
+          }
+        }));
         return { items: items.filter((item): item is ProductCandidate => Boolean(item)), error: null };
       } catch (error) {
         const message = error instanceof Error ? error.message : "erreur inconnue";
