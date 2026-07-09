@@ -13,6 +13,10 @@ import { candidateMismatchReasons, scoreMismatchReasons } from "@/lib/scans/rada
 import type { AppUser, ProductCandidate, Radar } from "@/types";
 
 type RejectionSummary = Record<string, number>;
+type RadarScanOptions = {
+  sourceNames?: string[];
+  updateRadarSchedule?: boolean;
+};
 
 function countRejections(summary: RejectionSummary, reasons: string[]) {
   for (const reason of reasons) summary[reason] = (summary[reason] ?? 0) + 1;
@@ -68,7 +72,7 @@ function whatsappDealText(candidate: ProductCandidate, score: ReturnType<typeof 
   ].join("\n");
 }
 
-export async function runRadarScan(radarId: string, ownerId?: string) {
+export async function runRadarScan(radarId: string, ownerId?: string, options: RadarScanOptions = {}) {
   const db = serviceDb();
   let query = db.from("radars").select("*, users(*)").eq("id", radarId);
   if (ownerId) query = query.eq("user_id", ownerId);
@@ -130,13 +134,14 @@ export async function runRadarScan(radarId: string, ownerId?: string) {
   let telegramSkipped = 0;
   const rejectionSummary: RejectionSummary = {};
   try {
-    const enabledAdapters = adaptersFor(radar.sources);
+    const requestedSources = options.sourceNames ?? radar.sources;
+    const enabledAdapters = adaptersFor(requestedSources);
     if (!enabledAdapters.length) {
       const now = new Date().toISOString();
       await db.from("scan_logs").update({
         status: "skipped",
         finished_at: now,
-        error_message: `Scan ignoré : aucune source active parmi [${radar.sources.join(", ")}].`
+        error_message: `Scan ignoré : aucune source active parmi [${requestedSources.join(", ")}].`
       }).eq("id", log.id);
       return { candidatesFound: 0, alertsCreated: 0, alertsSent: 0, telegramSkipped: 0, rejectionSummary, skipped: true, reason: "no_enabled_source" };
     }
@@ -175,7 +180,9 @@ export async function runRadarScan(radarId: string, ownerId?: string) {
       const next = new Date(now.getTime() + radar.scan_frequency_minutes * 60_000);
       const message = `Toutes les sources ont échoué: ${sourceErrors.join("; ")}`;
       await Promise.all([
-        db.from("radars").update({ last_scanned_at: now.toISOString(), next_scan_at: next.toISOString() }).eq("id", radar.id).eq("user_id", user.id),
+        options.updateRadarSchedule === false
+          ? Promise.resolve()
+          : db.from("radars").update({ last_scanned_at: now.toISOString(), next_scan_at: next.toISOString() }).eq("id", radar.id).eq("user_id", user.id),
         db.from("scan_logs").update({
           status: "error",
           finished_at: now.toISOString(),
@@ -487,7 +494,9 @@ export async function runRadarScan(radarId: string, ownerId?: string) {
     const now = new Date();
     const next = new Date(now.getTime() + radar.scan_frequency_minutes * 60_000);
     await Promise.all([
-      db.from("radars").update({ last_scanned_at: now.toISOString(), next_scan_at: next.toISOString() }).eq("id", radar.id).eq("user_id", user.id),
+      options.updateRadarSchedule === false
+        ? Promise.resolve()
+        : db.from("radars").update({ last_scanned_at: now.toISOString(), next_scan_at: next.toISOString() }).eq("id", radar.id).eq("user_id", user.id),
       db.from("scan_logs").update({
         status: "success",
         finished_at: now.toISOString(),
@@ -528,6 +537,33 @@ export async function runDueScans() {
   return Promise.all((data ?? []).map(async (radar) => {
     try {
       return { id: radar.id, ok: true, ...(await runRadarScan(radar.id, radar.user_id)) };
+    } catch (error) {
+      return { id: radar.id, ok: false, error: error instanceof Error ? error.message : "Erreur" };
+    }
+  }));
+}
+
+export async function runDueEmailAlertScans() {
+  if (process.env.ENABLE_EMAIL_ALERTS_SOURCE !== "true") return [];
+  const limit = Math.min(Math.max(Number(process.env.EMAIL_ALERT_SCAN_LIMIT ?? 10), 1), 50);
+  const { data, error } = await serviceDb()
+    .from("radars")
+    .select("id,user_id,users!inner(status)")
+    .eq("is_active", true)
+    .eq("users.status", "active")
+    .contains("sources", ["email-alerts"])
+    .limit(limit);
+  if (error) throw error;
+  return Promise.all((data ?? []).map(async (radar) => {
+    try {
+      return {
+        id: radar.id,
+        ok: true,
+        ...(await runRadarScan(radar.id, radar.user_id, {
+          sourceNames: ["email-alerts"],
+          updateRadarSchedule: false
+        }))
+      };
     } catch (error) {
       return { id: radar.id, ok: false, error: error instanceof Error ? error.message : "Erreur" };
     }

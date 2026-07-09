@@ -42,7 +42,7 @@ export default async function AdminPage() {
       <Stat k="Utilisateurs" v={users??0} hint={`${activeUsers??0} actif(s), ${suspendedUsers??0} suspendu(s)`}/><Stat k="Radars actifs" v={activeRadars??0} hint="tous utilisateurs"/><Stat k="Alertes 24 h" v={alertsToday??0} hint="envoyées ou créées"/><Stat k="Erreurs 7 j" v={scanErrors??0} hint={`${skippedScans??0} scan(s) ignoré(s)`} danger={Boolean(scanErrors)}/><Stat k="Ventes vérifiées" v={soldComparables??0} hint="comparables marché"/>
     </div>
     <div className="mt-4 grid gap-4 sm:grid-cols-4"><Stat k="Deals sauvegardés" v={savedDeals??0} hint="actions utilisateurs"/><Stat k="Deals rejetés" v={rejectedDeals??0} hint="actions utilisateurs"/><Stat k="Taux actionnable" v={totalAlerts?Math.round(((savedDeals??0)/totalAlerts)*100):0} hint="% sauvegardés / alertes totales"/><Stat k="Bénéfice réel" v={Math.round(realizedProfit)} hint={`${realizedDeals?.length??0} revente(s), en CHF`}/></div>
-    <nav className="mt-6 flex flex-wrap gap-3"><Link className="button-secondary" href="/admin/health">Santé et configuration</Link><a className="button-secondary" href="/api/admin/scan-logs">Exporter les logs JSON</a></nav>
+    <nav className="mt-6 flex flex-wrap gap-3"><Link className="button-secondary" href="/admin/health">Santé et configuration</Link><Link className="button-secondary" href="/admin/email-alerts">Alertes mail</Link><a className="button-secondary" href="/api/admin/scan-logs">Exporter les logs JSON</a></nav>
 
     <div className="mt-10 grid gap-6 xl:grid-cols-3">
       <section className="card xl:col-span-2"><Title title="Activité des scans" subtitle="12 dernières exécutions"/>
