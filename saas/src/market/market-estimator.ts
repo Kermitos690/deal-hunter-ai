@@ -44,6 +44,10 @@ function weightedQuantile(values: Array<{ price: number; weight: number }>, quan
   return ordered.at(-1)?.price ?? 0;
 }
 
+function evidenceKind(item: Comparable) {
+  return item.evidence_type ?? (item.source.endsWith("_active_listing") ? "ACTIVE_LISTING" : "SOLD");
+}
+
 export function estimateMarketValue(
   candidate: ProductCandidate,
   _radar: Radar,
@@ -59,10 +63,10 @@ export function estimateMarketValue(
   if (valid.length) {
     const trim = valid.length >= 10 ? Math.floor(valid.length * 0.1) : 0;
     const sample = trim ? valid.slice(trim, valid.length - trim) : valid;
-    const sold = sample.filter(({ item }) =>
-      (item.evidence_type ?? (item.source.endsWith("_active_listing") ? "ACTIVE_LISTING" : "SOLD")) === "SOLD"
-    );
+    const sold = sample.filter(({ item }) => evidenceKind(item) === "SOLD");
+    const activeSignals = sample.filter(({ item }) => evidenceKind(item) !== "SOLD");
     const soldSources = new Set(sold.map(({ item }) => item.source));
+    const activeSources = new Set(activeSignals.map(({ item }) => item.source));
     const recentSold = sold.filter(({ item }) =>
       item.sold_at && now - new Date(item.sold_at).getTime() <= 90 * DAY
     );
@@ -72,7 +76,7 @@ export function estimateMarketValue(
     const confidence =
       sold.length >= 10 && recentSold.length >= 5 && soldSources.size >= 2
         ? "HIGH"
-        : sold.length >= 3
+        : sold.length >= 3 || activeSignals.length >= 20 || (activeSignals.length >= 8 && activeSources.size >= 2)
           ? "MEDIUM"
           : "LOW";
     return {
@@ -85,12 +89,13 @@ export function estimateMarketValue(
       comparableSources: [...new Set(sample.map(({ item }) => item.source))],
       notes: [
         `${sold.length} vente(s) réalisée(s), dont ${recentSold.length} sur les 90 derniers jours.`,
-        `${sample.length - sold.length} signal(aux) de marché non vendu(s), pondérés à la baisse.`,
+        `${activeSignals.length} annonce(s) active(s) ou signal(aux) de marché, pondérés à la baisse.`,
+        sold.length ? "Estimation soutenue par ventes réalisées et signaux actifs." : "Estimation basée sur annonces actives : utile pour cadrer le marché, mais à confirmer par ventes conclues.",
         "Estimation pondérée par récence, qualité de correspondance, état et fiabilité."
       ],
       comparableDetails: sample.map(({ item, weight }) => ({
         source: item.source,
-        evidenceType: item.evidence_type ?? (item.source.endsWith("_active_listing") ? "ACTIVE_LISTING" : "SOLD"),
+        evidenceType: evidenceKind(item),
         title: item.title,
         price: item.sold_price,
         currency: item.currency,
