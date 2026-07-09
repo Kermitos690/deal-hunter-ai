@@ -10,7 +10,14 @@ const checked = (form: FormData, name: string) => form.getAll(name).map(String);
 
 const CONDITIONS = [["NEW","Neuf"],["A","Excellent"],["B","Bon"],["C","Usagé"],["REPAIR","À réparer"],["UNKNOWN","Non précisé"]];
 const SALE_TYPES = [["BUY_NOW","Achat immédiat"],["AUCTION","Enchère"]];
-const SOURCES = [["ebay","eBay mondial"],["komehyo","KOMEHYO Japon"],["email-alerts","Alertes e-mail"],["rss","Flux maisons d’enchères"]];
+const SOURCES = [
+  ["ebay","eBay mondial"],
+  ["ricardo","Ricardo Suisse"],
+  ["anibis","Anibis Suisse"],
+  ["komehyo","KOMEHYO Japon"],
+  ["email-alerts","Alertes e-mail"],
+  ["rss","Flux maisons d’enchères"]
+];
 const COUNTRIES = [["CH","Suisse"],["FR","France"],["DE","Allemagne"],["IT","Italie"],["GB","Royaume-Uni"],["US","États-Unis"],["CA","Canada"],["AU","Australie"],["JP","Japon"],["EU","Autres pays UE"]];
 const CATEGORIES = ["Montres","Sacs et accessoires","Sneakers","Cartes à collectionner","Bijoux","Électronique","Mode","Objets de collection","Pièces détachées","Autre"];
 
@@ -52,32 +59,32 @@ export function RadarForm({initial,template}:{initial?:Partial<Radar>;template?:
   const conditions=value("accepted_conditions",CONDITIONS.map(([v])=>v)) as string[];
   const saleTypes=value("sale_types",SALE_TYPES.map(([v])=>v)) as string[];
   const countries=value("source_countries",COUNTRIES.map(([v])=>v)) as string[];
-  const sources=value("sources",SOURCES.map(([v])=>v)) as string[];
+  const sources=value("sources",["ebay","ricardo","anibis"]) as string[];
   return <form className="grid gap-7" onSubmit={submit}>
-    <Section title="1. Produit recherché" hint="Les champs libres restent utiles pour les marques et références exactes.">
+    <Section title="1. Produit recherché" hint="Décris ce que tu veux vraiment acheter. Marque + catégorie suffisent pour commencer.">
       <Field name="name" label="Nom du radar" required placeholder="Omega vintage à réparer" defaultValue={value("name",template?.title??"")} />
       <div className="grid gap-5 md:grid-cols-2">
         <Select name="category" label="Catégorie" options={CATEGORIES} defaultValue={value("category","Montres")} />
-        <Field name="brands" label="Marques (séparées par virgules)" placeholder="Omega, TAG Heuer" defaultValue={(value("brands",[]) as string[]).join(", ")} />
+        <Field name="brands" label="Marques" placeholder="Omega, TAG Heuer" defaultValue={(value("brands",[]) as string[]).join(", ")} />
       </div>
       <Field name="models" label="Modèles ou références" placeholder="Seamaster, 136.005, Professional 2000" defaultValue={(value("models",[]) as string[]).join(", ")} />
-      <div className="grid gap-5 md:grid-cols-2"><Field name="include_keywords" label="Mots-clés inclus" defaultValue={(value("include_keywords",[]) as string[]).join(", ")} /><Field name="exclude_keywords" label="Mots-clés exclus" defaultValue={(value("exclude_keywords",["fake","replica","inspired","boîte seule"]) as string[]).join(", ")} /></div>
+      <div className="grid gap-5 md:grid-cols-2"><Field name="include_keywords" label="Mots-clés obligatoires" defaultValue={(value("include_keywords",[]) as string[]).join(", ")} /><Field name="exclude_keywords" label="Mots à exclure" defaultValue={(value("exclude_keywords",["fake","replica","inspired","boîte seule"]) as string[]).join(", ")} /></div>
     </Section>
-    <Section title="2. Couverture géographique" hint="Les pays connus sont filtrés. Une annonce sans pays renseigné reste admissible.">
+    <Section title="2. Où chercher" hint="Pour la Suisse, coche Ricardo et Anibis. Les annonces sans pays renseigné ne sont pas supprimées automatiquement.">
       <ChoiceGroup name="source_countries" options={COUNTRIES} defaults={countries} />
-      <Select name="target_country" label="Pays de livraison" options={["CH","FR","DE","IT","GB","US","CA","AU","JP"]} defaultValue={value("target_country","CH")} />
-      <p className="text-xs text-slate-500">Les frais vers le pays cible restent ceux saisis manuellement. Calcul automatique : bientôt disponible.</p>
+      <Select name="target_country" label="Pays de revente/livraison" options={["CH","FR","DE","IT","GB","US","CA","AU","JP"]} defaultValue={value("target_country","CH")} />
     </Section>
-    <Section title="3. État et type de vente" hint="Décoche uniquement ce que tu refuses absolument.">
+    <Section title="3. État et type de vente" hint="Pour explorer large, accepte tous les états et les deux types de vente.">
       <ChoiceGroup title="États acceptés" name="accepted_conditions" options={CONDITIONS} defaults={conditions} />
       <ChoiceGroup title="Types de vente" name="sale_types" options={SALE_TYPES} defaults={saleTypes} />
-      <p className="text-xs text-slate-500">Lots et ventes B2B : bientôt disponibles lorsque la source fournit une donnée fiable.</p>
     </Section>
-    <Section title="4. Sources interrogées" hint="Toutes les sources actuellement opérationnelles sont présélectionnées.">
+    <Section title="4. Sources" hint="Ricardo et Anibis sont vérifiés comme annonces actives avant d’être envoyés au scoring.">
       <ChoiceGroup name="sources" options={SOURCES} defaults={sources} />
-      <p className="text-xs text-slate-500">Yahoo Japan et StockX apparaîtront automatiquement après validation de leurs accès développeur.</p>
+      <div className="rounded-xl border border-mint/20 bg-mint/10 p-3 text-sm text-mint">
+        Conseil : pour un radar Suisse, commence avec eBay + Ricardo + Anibis. Ajoute KOMEHYO pour l’import Japon.
+      </div>
     </Section>
-    <Section title="5. Rentabilité et budget">
+    <Section title="5. Rentabilité et budget" hint="Mode découverte : mets marge min 1 CHF, ROI 0 %, score 0 pour voir presque tout ce qui passe les filtres produit.">
       <div className="grid gap-5 md:grid-cols-3"><Field name="max_buy_price" label="Prix max CHF" type="number" required defaultValue={value("max_buy_price","")} /><Field name="total_budget" label="Budget total CHF" type="number" defaultValue={value("total_budget","")} /><Field name="min_profit" label="Marge min CHF" type="number" defaultValue={value("min_profit",30)} /></div>
       <div className="grid gap-5 md:grid-cols-3"><Field name="min_roi_percent" label="ROI min %" type="number" defaultValue={value("min_roi_percent",15)} /><Field name="min_score" label="Score min" type="number" defaultValue={value("min_score",70)} /><Field name="scan_frequency_minutes" label="Fréquence (min)" type="number" defaultValue={value("scan_frequency_minutes",360)} /></div>
       <div className="grid gap-5 md:grid-cols-3"><Field name="shipping_cost" label="Livraison CHF" type="number" defaultValue={value("shipping_cost",0)} /><Field name="customs_cost" label="Douane CHF" type="number" defaultValue={value("customs_cost",0)} /><Field name="repair_cost" label="Réparation CHF" type="number" defaultValue={value("repair_cost",0)} /></div>
@@ -87,7 +94,7 @@ export function RadarForm({initial,template}:{initial?:Partial<Radar>;template?:
       <div className="grid gap-3 sm:grid-cols-2">{[["alerts_enabled","Alertes Telegram"],["photos_required","Photos obligatoires"],["auction_reminder_enabled","Rappel si une date d’enchère est disponible"]].map(([name,label]) => <label key={name} className="flex items-center gap-3 rounded-xl border border-white/10 bg-white/[.03] p-3"><input name={name} type="checkbox" defaultChecked={Boolean(value(name as keyof Radar,true))}/>{label}</label>)}</div>
     </Section>
     {error && <p className="rounded-xl bg-red-500/10 p-3 text-red-300">{error}</p>}
-    <button className="button" disabled={busy}>{busy ? "Enregistrement…" : initial?.id?"Enregistrer les modifications":"Créer le radar complet"}</button>
+    <button className="button" disabled={busy}>{busy ? "Enregistrement…" : initial?.id?"Enregistrer les modifications":"Créer le radar"}</button>
   </form>;
 }
 
