@@ -26,9 +26,12 @@ export function summarizeSourceLogs(logs: SourceLog[]) {
 export function configuredSources() {
   return [
     { source:"ebay", status:process.env.ENABLE_EBAY_SOURCE==="true"?"active":"inactive", detail:process.env.EBAY_CLIENT_ID&&process.env.EBAY_CLIENT_SECRET?"OAuth configuré":"Identifiants manquants" },
+    { source:"ricardo", status:process.env.ENABLE_RICARDO_SOURCE==="false"?"inactive":"active", detail:"Marketplace suisse, annonces actives vérifiées par page détail" },
+    { source:"anibis", status:process.env.ENABLE_ANIBIS_SOURCE==="false"?"inactive":"active", detail:"Marketplace suisse, annonces actives vérifiées par page détail" },
     { source:"komehyo", status:process.env.ENABLE_KOMEHYO_SOURCE==="false"?"inactive":"active", detail:"Catalogue public Japon, annonces actives pondérées" },
     { source:"email-alerts", status:process.env.ENABLE_EMAIL_ALERTS_SOURCE==="true"?"active":"inactive", detail:process.env.EMAIL_ADDRESS&&process.env.EMAIL_APP_PASSWORD?"IMAP configuré":"IMAP incomplet" },
     { source:"rss", status:process.env.ENABLE_RSS_SOURCE==="true"?"active":"inactive", detail:process.env.PUBLIC_FEED_URLS?"Flux configuré":"Aucun flux" },
+    { source:"whatsapp", status:process.env.WHATSAPP_ACCESS_TOKEN&&process.env.WHATSAPP_PHONE_NUMBER_ID?"active":"inactive", detail:"Canal d’alerte, pas une source de produits" },
     { source:"yahoo-japan", status:"not_configured", detail:"Connecteur développé, Client ID absent" },
     { source:"stockx", status:"not_developed", detail:"Non développé" }
   ];

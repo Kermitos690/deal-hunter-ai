@@ -4,6 +4,7 @@ import { normalizeUrl, productFingerprint } from "@/lib/dedupe";
 import { estimateMarketValue } from "@/market/market-estimator";
 import { calculateDealScore } from "@/scoring/calculate-deal-score";
 import { sendDealAlert } from "@/telegram/send-alert";
+import { sendWhatsAppText } from "@/whatsapp/client";
 import { PLAN_LIMITS } from "@/plans/limits";
 import { candidateInChf } from "@/lib/fx";
 import { randomUUID } from "node:crypto";
@@ -46,6 +47,25 @@ function comparableListings(candidate: ProductCandidate, candidates: ProductCand
       model: item.model,
       evidence_url: item.productUrl
     }));
+}
+
+function whatsappDealText(candidate: ProductCandidate, score: ReturnType<typeof calculateDealScore>) {
+  return [
+    "🚨 Deal Hunter AI — opportunité détectée",
+    "",
+    `${candidate.title}`,
+    `Source : ${candidate.source}`,
+    `Prix : ${candidate.priceAmount.toFixed(0)} ${candidate.priceCurrency}`,
+    `Score : ${score.totalScore}/100`,
+    `Décision : ${score.decisionStatus ?? score.recommendation}`,
+    `Bénéfice estimé : ${score.estimatedNetProfit.toFixed(0)} CHF`,
+    `ROI estimé : ${score.estimatedRoiPercent.toFixed(1)} %`,
+    `Confiance marché : ${score.marketConfidence} (${score.comparableCount} comparables)`,
+    "",
+    `Plan : ${score.actionPlan ?? "Vérifier avant achat et ne pas dépasser l’offre maximum."}`,
+    "",
+    candidate.productUrl
+  ].join("\n");
 }
 
 export async function runRadarScan(radarId: string, ownerId?: string) {
@@ -368,6 +388,9 @@ export async function runRadarScan(radarId: string, ownerId?: string) {
       let alertStatus = "created";
       let telegramMessageId: string | null = null;
       let sentAt: string | null = null;
+      let whatsappMessageId: string | null = null;
+      let whatsappSentAt: string | null = null;
+      let whatsappStatus: string | null = null;
       let stopAfterCurrentAlert = false;
 
       if (!user.telegram_id) {
@@ -401,10 +424,31 @@ export async function runRadarScan(radarId: string, ownerId?: string) {
         }
       }
 
+      if (user.whatsapp_phone && user.whatsapp_alerts_enabled && radar.alerts_enabled) {
+        try {
+          const whatsappResult = await sendWhatsAppText(user.whatsapp_phone, whatsappDealText(candidate, score));
+          if (whatsappResult.skipped) {
+            whatsappStatus = whatsappResult.reason;
+          } else {
+            whatsappMessageId = whatsappResult.messageId;
+            whatsappStatus = "sent";
+            whatsappSentAt = new Date().toISOString();
+          }
+        } catch (whatsappError) {
+          whatsappStatus = "api_error";
+          console.error("Échec envoi alerte WhatsApp:", whatsappError instanceof Error ? whatsappError.message : "Erreur inconnue");
+        }
+      } else if (user.whatsapp_phone && !user.whatsapp_alerts_enabled) {
+        whatsappStatus = "user_whatsapp_disabled";
+      }
+
       await db
         .from("alerts")
         .update({
           telegram_message_id: telegramMessageId,
+          whatsapp_message_id: whatsappMessageId,
+          whatsapp_sent_at: whatsappSentAt,
+          whatsapp_status: whatsappStatus,
           status: alertStatus,
           sent_at: sentAt
         })

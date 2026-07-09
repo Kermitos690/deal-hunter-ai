@@ -75,6 +75,10 @@ const CATEGORY_PROFILES: Record<string, CategoryProfile> = {
 const DEFAULT_PROFILE = CATEGORY_PROFILES["montres"];
 const normalized=(value:string)=>value.normalize("NFD").replace(/\p{Diacritic}/gu,"").toLowerCase().trim();
 const unique = (values: string[]) => [...new Set(values.map((value) => value.trim()).filter(Boolean))];
+const ALL_BRAND_ALIASES = Object.values(CATEGORY_PROFILES).flatMap((profile) => [
+  ...profile.brands.map((brand) => [normalized(brand), brand] as const),
+  ...Object.entries(profile.aliases).map(([alias, brand]) => [normalized(alias), brand] as const)
+]);
 
 function profileFor(category?: string) {
   const key = normalized(category ?? "");
@@ -88,6 +92,15 @@ function escapeRegex(value: string) {
 function includesTerm(haystack: string, term: string) {
   const needle = normalized(term);
   return needle.length > 1 && new RegExp(`(^|[^a-z0-9])${escapeRegex(needle)}([^a-z0-9]|$)`, "i").test(haystack);
+}
+
+function brandsFromAllCategories(value: string) {
+  const haystack = normalized(value);
+  return unique(ALL_BRAND_ALIASES
+    .map(([alias, brand]) => ({ alias, brand, index: haystack.search(new RegExp(`(^|[^a-z0-9])${escapeRegex(alias)}([^a-z0-9]|$)`, "i")) }))
+    .filter((item) => item.index >= 0)
+    .sort((a, b) => a.index - b.index)
+    .map(({ brand }) => brand === "Hermes" ? "Hermès" : brand));
 }
 
 export function searchSuggestionsFor(category: string) {
@@ -146,6 +159,8 @@ export function parseSearchIntent(value:string, category?: string): SearchIntent
 export function parseBrands(value:string, category?: string) {
   const intent = parseSearchIntent(value, category);
   if (intent.brands.length) return intent.brands;
+  const globalBrands = brandsFromAllCategories(value);
+  if (globalBrands.length) return globalBrands;
   return unique(value.split(/[,;\n]+/).map((brand)=>brand.trim()).filter(Boolean));
 }
 
