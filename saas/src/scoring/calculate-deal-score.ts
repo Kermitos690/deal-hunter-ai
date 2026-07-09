@@ -46,7 +46,7 @@ export function calculateDealScore(
       conditionScore * 0.12 +
       urgencyScore * 0.08
   );
-  const totalScore = market.confidence === "LOW"
+  const totalScore = market.confidence === "LOW" && market.comparableCount < 8
     ? Math.min(rawTotalScore, 54)
     : rawTotalScore;
   const recommendation =
@@ -54,7 +54,7 @@ export function calculateDealScore(
       ? "BUY"
       : totalScore >= 70
         ? "NEGOTIATE"
-        : totalScore >= 55
+        : totalScore >= 50 && estimatedNetProfit > 0
           ? "WATCH"
           : "AVOID";
   const actionPlan = buildDealActionPlan(candidate, radar, market.median, market.confidence);
@@ -72,7 +72,9 @@ export function calculateDealScore(
     `ROI estimé à ${roi.toFixed(1)} %.`,
     market.confidence !== "LOW"
       ? "Estimation soutenue par des comparables."
-      : "Estimation de marché prudente."
+      : market.comparableCount >= 8
+        ? "Estimation basée sur plusieurs signaux actifs, à confirmer par ventes conclues."
+        : "Estimation de marché prudente."
   ];
   if (conditionScore >= 70) reasons.push("État compatible avec une revente standard.");
 
@@ -96,7 +98,7 @@ export function calculateDealScore(
     decisionStatus: decision.decisionStatus,
     decisionRationale: decision.decisionRationale,
     recommendation,
-    scoringVersion: "v2",
+    scoringVersion: "v3",
     marketConfidence: market.confidence,
     comparableCount: market.comparableCount,
     reasons,
