@@ -7,6 +7,33 @@ export type TelegramAlertResult =
   | { messageId: string; skipped: false; reason?: never }
   | { messageId: null; skipped: true; reason: "telegram_token_missing" };
 
+export function dealAlertKeyboard(alertId: string, productUrl: string, hasAuctionEnd: boolean) {
+  const actionRows = [
+    [
+      { text: "❌ Rejeter", callback_data: `reject:${alertId}` },
+      { text: "📉 Négocier", callback_data: `negotiate:${alertId}` }
+    ],
+    hasAuctionEnd
+      ? [
+          { text: "🔔 Me rappeler", callback_data: `remind:${alertId}` },
+          { text: "🧾 Analyse complète", callback_data: `analysis:${alertId}` }
+        ]
+      : [
+          { text: "🧾 Analyse complète", callback_data: `analysis:${alertId}` }
+        ]
+  ];
+
+  return {
+    inline_keyboard: [
+      [
+        { text: "🔗 Ouvrir l’annonce", url: productUrl },
+        { text: "✅ Sauvegarder", callback_data: `save:${alertId}` }
+      ],
+      ...actionRows
+    ]
+  };
+}
+
 export async function sendDealAlert(
   telegramId: string,
   alertId: string,
@@ -16,22 +43,7 @@ export async function sendDealAlert(
   const token = process.env.TELEGRAM_BOT_TOKEN;
   if (!token) return { messageId: null, skipped: true, reason: "telegram_token_missing" };
   const bot = new Telegraf(token);
-  const buttons = {
-    inline_keyboard: [
-      [
-        { text: "🔗 Ouvrir l’annonce", url: candidate.productUrl },
-        { text: "✅ Sauvegarder", callback_data: `save:${alertId}` }
-      ],
-      [
-        { text: "❌ Rejeter", callback_data: `reject:${alertId}` },
-        { text: "📉 Négocier", callback_data: `negotiate:${alertId}` }
-      ],
-      [
-        { text: "🔔 Me rappeler", callback_data: `remind:${alertId}` },
-        { text: "🧾 Analyse complète", callback_data: `analysis:${alertId}` }
-      ]
-    ]
-  };
+  const buttons = dealAlertKeyboard(alertId, candidate.productUrl, Boolean(candidate.auctionEndAt));
   const text = formatTelegramAlert(candidate, score);
   const photo = candidate.imageUrls[0];
   let message;
