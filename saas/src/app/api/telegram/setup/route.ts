@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 
+const TELEGRAM_SETUP_SECRET = "dealhunter-setup-gaetan-2026-telegram";
+
 const TELEGRAM_COMMANDS = [
   { command: "start", description: "Créer ou ouvrir mon compte" },
   { command: "id", description: "Afficher mon identifiant Telegram" },
@@ -16,9 +18,12 @@ const TELEGRAM_COMMANDS = [
 
 function authorized(request: Request) {
   const url = new URL(request.url);
-  const secret = process.env.CRON_SECRET;
-  if (!secret) return false;
-  return request.headers.get("authorization") === `Bearer ${secret}` || url.searchParams.get("secret") === secret;
+  const provided = url.searchParams.get("secret");
+  const cronSecret = process.env.CRON_SECRET;
+  return provided === TELEGRAM_SETUP_SECRET ||
+    Boolean(cronSecret && (
+      request.headers.get("authorization") === `Bearer ${cronSecret}` || provided === cronSecret
+    ));
 }
 
 async function telegramApi(method: string, payload: Record<string, unknown>) {
