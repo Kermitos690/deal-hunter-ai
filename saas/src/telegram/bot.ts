@@ -10,7 +10,7 @@ import { alertStatusForTelegramAction, isTelegramDealAction, type TelegramDealAc
 import { looksLikeWhatsAppPhone, normalizeWhatsAppPhone } from "@/whatsapp/client";
 import { categoryKeyboard, categorySearchPrompt, conditionKeyboard, frequencyKeyboard, parseSearchIntent, positiveNumber, searchSuggestionAt, searchSuggestionKeyboard, sourceKeyboard } from "@/telegram/radar-wizard";
 
-const ACTIVE_RADAR_SOURCES = ["ebay", "ricardo", "anibis", "komehyo", "email-alerts", "rss"];
+const ACTIVE_RADAR_SOURCES = ["ebay", "ricardo", "anibis", "tutti", "komehyo", "email-alerts", "rss"];
 export { scanResultText } from "@/telegram/scan-result-text";
 
 async function scanAndReply(ctx: any, radarId: string, userId: string) {

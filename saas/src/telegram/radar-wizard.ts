@@ -182,6 +182,7 @@ export const sourceKeyboard = { inline_keyboard:[
   [{text:"🔎 Toutes sources actives",callback_data:"wizsrc:all"}],
   [{text:"🌍 eBay mondial",callback_data:"wizsrc:ebay"},{text:"🇯🇵 KOMEHYO",callback_data:"wizsrc:komehyo"}],
   [{text:"🇨🇭 Ricardo suisse",callback_data:"wizsrc:ricardo"},{text:"🇨🇭 Anibis suisse",callback_data:"wizsrc:anibis"}],
+  [{text:"🇨🇭 Tutti suisse",callback_data:"wizsrc:tutti"}],
 ]};
 export const frequencyKeyboard = { inline_keyboard:[
   [{text:"Toutes les 6 h",callback_data:"wizfreq:360"},{text:"Toutes les 12 h",callback_data:"wizfreq:720"}],

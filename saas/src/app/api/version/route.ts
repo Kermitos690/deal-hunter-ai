@@ -10,8 +10,8 @@ export async function GET() {
     telegramSetup: "commands-v1",
     telegramSetupAuth: "setup-secret-v1",
     whatsapp: "cloud-api-mvp-v1",
-    deployedAt: "2026-07-09T05:08:00+02:00",
+    deployedAt: "2026-07-09T14:20:00+02:00",
     gitCommit: process.env.VERCEL_GIT_COMMIT_SHA ?? null,
-    sources: ["ebay", "ricardo", "anibis", "komehyo", "email-alerts", "rss"]
+    sources: ["ebay", "ricardo", "anibis", "tutti", "komehyo", "email-alerts", "rss"]
   });
 }

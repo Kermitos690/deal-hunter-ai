@@ -14,6 +14,7 @@ const SOURCES = [
   ["ebay","eBay mondial"],
   ["ricardo","Ricardo Suisse"],
   ["anibis","Anibis Suisse"],
+  ["tutti","Tutti Suisse"],
   ["komehyo","KOMEHYO Japon"],
   ["email-alerts","Alertes e-mail"],
   ["rss","Flux maisons d’enchères"]
@@ -59,7 +60,7 @@ export function RadarForm({initial,template}:{initial?:Partial<Radar>;template?:
   const conditions=value("accepted_conditions",CONDITIONS.map(([v])=>v)) as string[];
   const saleTypes=value("sale_types",SALE_TYPES.map(([v])=>v)) as string[];
   const countries=value("source_countries",COUNTRIES.map(([v])=>v)) as string[];
-  const sources=value("sources",["ebay","ricardo","anibis"]) as string[];
+  const sources=value("sources",["ebay","ricardo","anibis","tutti"]) as string[];
   return <form className="grid gap-7" onSubmit={submit}>
     <Section title="1. Produit recherché" hint="Décris ce que tu veux vraiment acheter. Marque + catégorie suffisent pour commencer.">
       <Field name="name" label="Nom du radar" required placeholder="Omega vintage à réparer" defaultValue={value("name",template?.title??"")} />
@@ -78,10 +79,10 @@ export function RadarForm({initial,template}:{initial?:Partial<Radar>;template?:
       <ChoiceGroup title="États acceptés" name="accepted_conditions" options={CONDITIONS} defaults={conditions} />
       <ChoiceGroup title="Types de vente" name="sale_types" options={SALE_TYPES} defaults={saleTypes} />
     </Section>
-    <Section title="4. Sources" hint="Ricardo et Anibis sont vérifiés comme annonces actives avant d’être envoyés au scoring.">
+    <Section title="4. Sources" hint="Ricardo, Anibis et Tutti sont lus en direct et vérifiés sur page détail avant scoring.">
       <ChoiceGroup name="sources" options={SOURCES} defaults={sources} />
       <div className="rounded-xl border border-mint/20 bg-mint/10 p-3 text-sm text-mint">
-        Conseil : pour un radar Suisse, commence avec eBay + Ricardo + Anibis. Ajoute KOMEHYO pour l’import Japon.
+        Conseil : pour un radar Suisse, commence avec eBay + Ricardo + Anibis + Tutti. Ajoute KOMEHYO pour l’import Japon.
       </div>
     </Section>
     <Section title="5. Rentabilité et budget" hint="Mode découverte : mets marge min 1 CHF, ROI 0 %, score 0 pour voir presque tout ce qui passe les filtres produit.">

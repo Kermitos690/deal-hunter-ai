@@ -3,6 +3,7 @@ import { mockAdapter } from "./mock.adapter";
 import { ebayAdapter } from "./ebay.adapter";
 import { ricardoAdapter } from "./ricardo.adapter";
 import { anibisAdapter } from "./anibis.adapter";
+import { tuttiAdapter } from "./tutti.adapter";
 import { buyeeAdapter } from "./buyee.adapter";
 import { yahooJapanAdapter } from "./yahooJapan.adapter";
 import { komehyoAdapter } from "./komehyo.adapter";
@@ -11,7 +12,7 @@ import { rssAdapter } from "./rss.adapter";
 import { emailAlertsAdapter } from "./emailAlerts.adapter";
 
 const adapters: SourceAdapter[] = [
-  mockAdapter, ebayAdapter, ricardoAdapter, anibisAdapter, buyeeAdapter,
+  mockAdapter, ebayAdapter, ricardoAdapter, anibisAdapter, tuttiAdapter, buyeeAdapter,
   yahooJapanAdapter, rssAdapter, emailAlertsAdapter, komehyoAdapter, alevelAdapter
 ];
 
