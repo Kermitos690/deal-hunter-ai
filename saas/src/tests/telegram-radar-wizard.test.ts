@@ -1,5 +1,5 @@
 import { describe,expect,it } from "vitest";
-import { parseBrands,positiveNumber } from "@/telegram/radar-wizard";
+import { parseBrands, positiveNumber, recommendedTelegramSources, sourceSelectionKeyboard } from "@/telegram/radar-wizard";
 
 describe("Telegram radar wizard",()=>{
   it("reconnaît plusieurs marques sans virgules",()=>{
@@ -11,5 +11,12 @@ describe("Telegram radar wizard",()=>{
     expect(positiveNumber("1'500")).toBe(1500);
     expect(positiveNumber("-2")).toBeNull();
     expect(positiveNumber("abc")).toBeNull();
+  });
+  it("propose un pack source recommandé sans Ricardo/Anibis par défaut",()=>{
+    expect(recommendedTelegramSources()).toEqual(["ebay","komehyo","tutti","email-alerts"]);
+    const keyboard = sourceSelectionKeyboard(["ebay","tutti"]);
+    expect(JSON.stringify(keyboard)).toContain("✅ 🌍 eBay mondial");
+    expect(JSON.stringify(keyboard)).toContain("⬜ 🇨🇭 Ricardo bêta");
+    expect(JSON.stringify(keyboard)).toContain("wizsrcdone");
   });
 });

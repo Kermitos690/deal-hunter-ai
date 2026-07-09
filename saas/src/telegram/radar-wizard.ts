@@ -178,12 +178,34 @@ export const conditionKeyboard = { inline_keyboard:[
   [{text:"✨ Neuf + excellent",callback_data:"wizcond:NEW,A"},{text:"👍 Bon état",callback_data:"wizcond:A,B"}],
   [{text:"🛠 Usagé / réparation",callback_data:"wizcond:B,C,REPAIR"},{text:"🌐 Tous les états",callback_data:"wizcond:NEW,A,B,C,REPAIR,UNKNOWN"}]
 ]};
-export const sourceKeyboard = { inline_keyboard:[
-  [{text:"🔎 Toutes sources actives",callback_data:"wizsrc:all"}],
-  [{text:"🌍 eBay mondial",callback_data:"wizsrc:ebay"},{text:"🇯🇵 KOMEHYO",callback_data:"wizsrc:komehyo"}],
-  [{text:"🇨🇭 Ricardo suisse",callback_data:"wizsrc:ricardo"},{text:"🇨🇭 Anibis suisse",callback_data:"wizsrc:anibis"}],
-  [{text:"🇨🇭 Tutti suisse",callback_data:"wizsrc:tutti"}],
-]};
+export const TELEGRAM_SOURCE_OPTIONS = [
+  { id: "ebay", label: "🌍 eBay mondial", recommended: true },
+  { id: "komehyo", label: "🇯🇵 KOMEHYO", recommended: true },
+  { id: "tutti", label: "🇨🇭 Tutti", recommended: true },
+  { id: "email-alerts", label: "📩 Alertes email", recommended: true },
+  { id: "rss", label: "📰 RSS", recommended: false },
+  { id: "ricardo", label: "🇨🇭 Ricardo bêta", recommended: false },
+  { id: "anibis", label: "🇨🇭 Anibis bêta", recommended: false }
+] as const;
+
+export function recommendedTelegramSources() {
+  return TELEGRAM_SOURCE_OPTIONS.filter((source) => source.recommended).map((source) => source.id);
+}
+
+export function sourceSelectionKeyboard(selected: string[] = recommendedTelegramSources()) {
+  const selectedSet = new Set(selected);
+  return {
+    inline_keyboard: [
+      [{ text: "✅ Pack recommandé", callback_data: "wizsrcpreset:recommended" }],
+      ...TELEGRAM_SOURCE_OPTIONS.map((source) => [
+        { text: `${selectedSet.has(source.id) ? "✅" : "⬜"} ${source.label}`, callback_data: `wizsrctoggle:${source.id}` }
+      ]),
+      [{ text: "➡️ Continuer", callback_data: "wizsrcdone" }]
+    ]
+  };
+}
+
+export const sourceKeyboard = sourceSelectionKeyboard();
 export const frequencyKeyboard = { inline_keyboard:[
   [{text:"Toutes les 6 h",callback_data:"wizfreq:360"},{text:"Toutes les 12 h",callback_data:"wizfreq:720"}],
   [{text:"Une fois par jour",callback_data:"wizfreq:1440"}]

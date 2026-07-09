@@ -4,6 +4,7 @@ const TELEGRAM_SETUP_SECRET = "dealhunter-setup-gaetan-2026-telegram";
 
 const TELEGRAM_COMMANDS = [
   { command: "start", description: "Créer ou ouvrir mon compte" },
+  { command: "menu", description: "Afficher le menu principal" },
   { command: "id", description: "Afficher mon identifiant Telegram" },
   { command: "radars", description: "Lister mes radars" },
   { command: "newradar", description: "Créer un radar" },
