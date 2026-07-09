@@ -3,12 +3,20 @@ import { decisionLabel } from "@/scoring/decision-framework";
 
 const money = (value: number) => `${value.toFixed(0)} CHF`;
 
+const recommendationLabel: Record<string, string> = {
+  BUY: "ACHAT PRIORITAIRE",
+  NEGOTIATE: "À NÉGOCIER",
+  WATCH: "À SURVEILLER",
+  AVOID: "À ÉCARTER"
+};
+
 export function formatTelegramAlert(candidate: ProductCandidate, score: DealScore) {
   const reasons = score.reasons.slice(0, 3).map((reason) => `• ${reason}`).join("\n");
   const warnings = score.warnings.length
     ? score.warnings.slice(0, 3).map((warning) => `• ${warning}`).join("\n")
     : "• Aucun signal critique automatique. Vérification humaine requise.";
   const status = score.decisionStatus ?? "REVIEW_REQUIRED";
+  const signal = recommendationLabel[score.recommendation] ?? score.recommendation;
   return `DEAL HUNTER AI — NOTE D’OPPORTUNITÉ
 
 DÉCISION : ${decisionLabel[status]}
@@ -25,9 +33,9 @@ ${score.decisionRationale ?? "Analyse humaine complémentaire requise."}
 📊 ROI estimé : ${score.estimatedRoiPercent.toFixed(1)} %
 ⭐ Score : ${score.totalScore}/100
 🔎 Confiance marché : ${score.marketConfidence} (${score.comparableCount} comparables)
-🧮 Modèle : ${score.scoringVersion}
+🧮 Moteur d’analyse : ${score.scoringVersion}
 
-🧠 Signal moteur : ${score.recommendation}
+🧠 Signal : ${signal}
 🎯 Offre maximum : ${money(score.maximumOffer ?? score.estimatedBuyCost)}
 🛡 Seuil sans perte : ${money(score.breakEvenResalePrice ?? score.estimatedResalePrice)}
 🏪 Revente conseillée : ${score.recommendedChannel ?? "eBay"}
