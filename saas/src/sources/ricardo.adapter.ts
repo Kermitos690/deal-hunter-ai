@@ -1,6 +1,6 @@
 import type { ConditionGrade, ProductCandidate, Radar, SourceAdapter } from "@/types";
 import { inferRadarBrand } from "./ebay.adapter";
-import { liveFetch } from "./live-http";
+import { fetchErrorMessage, liveFetch } from "./live-http";
 
 const BASE_URL = "https://www.ricardo.ch";
 const BROWSER_HEADERS = {
@@ -129,7 +129,7 @@ export const ricardoAdapter: SourceAdapter = {
         const items = await Promise.all(links.map((url) => detailCandidate(url, radar)));
         return { items: items.filter((item): item is ProductCandidate => Boolean(item)), error: null };
       } catch (error) {
-        const message = error instanceof Error ? error.message : "erreur inconnue";
+        const message = fetchErrorMessage(error);
         console.warn(`Ricardo, requête « ${query} » ignorée: ${message}`);
         return { items: [] as ProductCandidate[], error: message };
       }

@@ -1,6 +1,6 @@
 import type { ConditionGrade, ProductCandidate, Radar, SourceAdapter } from "@/types";
 import { inferRadarBrand } from "./ebay.adapter";
-import { liveFetch } from "./live-http";
+import { fetchErrorMessage, liveFetch } from "./live-http";
 
 const BASE_URL = "https://www.tutti.ch";
 const BROWSER_HEADERS = {
@@ -162,13 +162,13 @@ export const tuttiAdapter: SourceAdapter = {
           try {
             return await detailCandidate(card, radar);
           } catch (error) {
-            console.warn(`Tutti, annonce ${card.id} ignorée: ${error instanceof Error ? error.message : "erreur détail"}`);
+            console.warn(`Tutti, annonce ${card.id} ignorée: ${fetchErrorMessage(error)}`);
             return null;
           }
         }));
         return { items: items.filter((item): item is ProductCandidate => Boolean(item)), error: null };
       } catch (error) {
-        const message = error instanceof Error ? error.message : "erreur inconnue";
+        const message = fetchErrorMessage(error);
         console.warn(`Tutti, requête « ${query} » ignorée: ${message}`);
         return { items: [] as ProductCandidate[], error: message };
       }

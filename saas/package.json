@@ -11,6 +11,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "scan": "tsx scripts/run-scan.ts",
+    "local-scanner": "node --env-file=.env.local --import tsx scripts/local-live-scanner.ts",
     "setup:webhook": "tsx scripts/setup-webhook.ts",
     "test:alert": "tsx scripts/test-alert.ts"
   },

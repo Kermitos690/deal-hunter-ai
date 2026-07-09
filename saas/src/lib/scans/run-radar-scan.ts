@@ -25,8 +25,14 @@ type SourceScanResult = {
   finishedAt: Date;
 };
 
+export const LOCAL_LIVE_SOURCE_NAMES = ["ricardo", "anibis", "tutti"] as const;
+
 function countRejections(summary: RejectionSummary, reasons: string[]) {
   for (const reason of reasons) summary[reason] = (summary[reason] ?? 0) + 1;
+}
+
+export function localLiveSourcesForRadar(sources: string[]) {
+  return LOCAL_LIVE_SOURCE_NAMES.filter((source) => sources.includes(source));
 }
 
 export function shouldFallbackToEbay(requestedSources: string[], sourceResults: Pick<SourceScanResult, "candidates" | "error">[]) {
@@ -595,4 +601,52 @@ export async function runDueEmailAlertScans() {
       return { id: radar.id, ok: false, error: error instanceof Error ? error.message : "Erreur" };
     }
   }));
+}
+
+export async function runLocalLiveSourceScans() {
+  const limit = Math.min(Math.max(Number(process.env.LOCAL_LIVE_SCAN_LIMIT ?? 20), 1), 100);
+  const delayMs = Math.min(Math.max(Number(process.env.LOCAL_LIVE_SCAN_DELAY_MS ?? 2000), 0), 30_000);
+  const { data, error } = await serviceDb()
+    .from("radars")
+    .select("id,user_id,sources,users!inner(status)")
+    .eq("is_active", true)
+    .eq("users.status", "active")
+    .limit(limit);
+  if (error) throw error;
+
+  const results = [];
+  for (const radar of data ?? []) {
+    const sourceNames = localLiveSourcesForRadar((radar.sources ?? []) as string[]);
+    if (!sourceNames.length) {
+      results.push({ id: radar.id, ok: true, skipped: true, reason: "no_local_live_source" });
+      continue;
+    }
+    const sourceResults = [];
+    for (const sourceName of sourceNames) {
+      try {
+        sourceResults.push({
+          source: sourceName,
+          ok: true,
+          ...(await runRadarScan(radar.id, radar.user_id, {
+            sourceNames: [sourceName],
+            updateRadarSchedule: false
+          }))
+        });
+      } catch (error) {
+        sourceResults.push({ source: sourceName, ok: false, error: error instanceof Error ? error.message : "Erreur" });
+      }
+      if (delayMs > 0) await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
+    results.push({
+      id: radar.id,
+      ok: sourceResults.every((result) => result.ok),
+      localLiveSources: sourceNames,
+      sourceResults,
+      candidatesFound: sourceResults.reduce((sum, result) => sum + ("candidatesFound" in result && typeof result.candidatesFound === "number" ? result.candidatesFound : 0), 0),
+      alertsCreated: sourceResults.reduce((sum, result) => sum + ("alertsCreated" in result && typeof result.alertsCreated === "number" ? result.alertsCreated : 0), 0),
+      alertsSent: sourceResults.reduce((sum, result) => sum + ("alertsSent" in result && typeof result.alertsSent === "number" ? result.alertsSent : 0), 0)
+    });
+    if (delayMs > 0) await new Promise((resolve) => setTimeout(resolve, delayMs));
+  }
+  return results;
 }

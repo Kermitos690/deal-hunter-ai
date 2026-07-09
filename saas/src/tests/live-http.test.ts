@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { liveSourceProxyConfigured, liveSourceProxyUrl } from "@/sources/live-http";
+import { fetchErrorMessage, liveSourceProxyConfigured, liveSourceProxyUrl } from "@/sources/live-http";
 
 describe("live source HTTP configuration", () => {
   const originalLiveProxy = process.env.LIVE_SOURCE_PROXY_URL;
@@ -32,5 +32,13 @@ describe("live source HTTP configuration", () => {
 
     expect(liveSourceProxyConfigured()).toBe(true);
     expect(liveSourceProxyUrl()).toBe("http://swiss-proxy.example:8080");
+  });
+
+  it("expose le code technique des erreurs fetch quand disponible", () => {
+    const error = new Error("fetch failed", {
+      cause: Object.assign(new Error("connection timeout"), { code: "ETIMEDOUT" })
+    });
+
+    expect(fetchErrorMessage(error)).toBe("fetch failed (ETIMEDOUT: connection timeout)");
   });
 });

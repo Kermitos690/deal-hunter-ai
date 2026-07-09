@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { shouldFallbackToEbay } from "@/lib/scans/run-radar-scan";
+import { localLiveSourcesForRadar, shouldFallbackToEbay } from "@/lib/scans/run-radar-scan";
 import { lockIsExpired, SCAN_LOCK_TTL_SECONDS, userCanRunActivity } from "@/lib/scans/scan-policy";
 
 describe("scan policy", () => {
@@ -29,5 +29,13 @@ describe("scan policy", () => {
       { candidates: [{} as any], error: null },
       { candidates: [], error: "HTTP 403" }
     ])).toBe(false);
+  });
+
+  it("sélectionne uniquement les sources live locales supportées", () => {
+    expect(localLiveSourcesForRadar(["ebay", "ricardo", "tutti", "komehyo"])).toEqual(["ricardo", "tutti"]);
+  });
+
+  it("ignore les radars sans source live locale", () => {
+    expect(localLiveSourcesForRadar(["ebay", "komehyo", "email-alerts"])).toEqual([]);
   });
 });
