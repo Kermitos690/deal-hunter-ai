@@ -8,7 +8,7 @@ export async function GET() {
     scoring: "market-signals-v3",
     telegramActions: "full-analysis-v1",
     whatsapp: "cloud-api-mvp-v1",
-    deployedAt: "2026-07-09T04:15:00+02:00",
+    deployedAt: "2026-07-09T04:25:00+02:00",
     gitCommit: process.env.VERCEL_GIT_COMMIT_SHA ?? null,
     sources: ["ebay", "ricardo", "anibis", "komehyo", "email-alerts", "rss"]
   });
