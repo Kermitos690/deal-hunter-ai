@@ -167,11 +167,33 @@ export async function runRadarScan(radarId: string, ownerId?: string) {
       started_at: result.startedAt.toISOString(),
       finished_at: result.finishedAt.toISOString()
     })));
-    const sourceErrors = sourceResults.flatMap((result) => result.error ? [result.error] : []);
+    const sourceErrors = sourceResults.flatMap((result) => result.error ? [`${result.source}: ${result.error}`] : []);
     sourceErrors.forEach((message) => console.warn("Source ignorée pendant le scan:", message));
     const candidates = sourceResults.flatMap((result) => result.candidates);
     if (!candidates.length && sourceErrors.length > 0 && sourceErrors.length === sourceResults.length) {
-      throw new Error(`Toutes les sources ont échoué: ${sourceErrors.join("; ")}`);
+      const now = new Date();
+      const next = new Date(now.getTime() + radar.scan_frequency_minutes * 60_000);
+      const message = `Toutes les sources ont échoué: ${sourceErrors.join("; ")}`;
+      await Promise.all([
+        db.from("radars").update({ last_scanned_at: now.toISOString(), next_scan_at: next.toISOString() }).eq("id", radar.id).eq("user_id", user.id),
+        db.from("scan_logs").update({
+          status: "error",
+          finished_at: now.toISOString(),
+          candidates_found: 0,
+          alerts_sent: 0,
+          error_message: message
+        }).eq("id", log.id)
+      ]);
+      return {
+        candidatesFound: 0,
+        alertsCreated: 0,
+        alertsSent: 0,
+        telegramSkipped: 0,
+        rejectionSummary,
+        skipped: true,
+        reason: "all_sources_failed",
+        sourceErrors
+      };
     }
     candidatesFound = candidates.length;
     const convertedCandidates: ProductCandidate[] = [];
@@ -474,7 +496,7 @@ export async function runRadarScan(radarId: string, ownerId?: string) {
         error_message: Object.keys(rejectionSummary).length ? JSON.stringify({ rejectionSummary }) : null
       }).eq("id", log.id)
     ]);
-    return { candidatesFound, alertsCreated, alertsSent, telegramSkipped, rejectionSummary };
+    return { candidatesFound, alertsCreated, alertsSent, telegramSkipped, rejectionSummary, sourceErrors };
   } catch (scanError) {
     await db.from("scan_logs").update({
       status: "error",
