@@ -6,6 +6,7 @@ import { parseAuctionResponse } from "@/telegram/auction-response";
 import { createSessionToken } from "@/lib/security/session";
 import { formatFullDealAnalysis } from "@/telegram/full-analysis";
 import { scanResultText } from "@/telegram/scan-result-text";
+import { alertStatusForTelegramAction, isTelegramDealAction, type TelegramDealAction } from "@/telegram/deal-actions";
 import { looksLikeWhatsAppPhone, normalizeWhatsAppPhone } from "@/whatsapp/client";
 import { categoryKeyboard, categorySearchPrompt, conditionKeyboard, frequencyKeyboard, parseSearchIntent, positiveNumber, searchSuggestionAt, searchSuggestionKeyboard, sourceKeyboard } from "@/telegram/radar-wizard";
 
@@ -103,6 +104,36 @@ async function replyWithFullAnalysis(ctx: any, alert: any) {
     .limit(5);
   await ctx.answerCbQuery("Analyse envoyée");
   await ctx.reply(formatFullDealAnalysis(product, score, comparables ?? []), { disable_web_page_preview: true });
+}
+
+async function loadDealContext(alert: any) {
+  const [{ data: product }, { data: score }] = await Promise.all([
+    serviceDb().from("products").select("*").eq("id", alert.product_id).maybeSingle(),
+    serviceDb().from("deal_scores").select("*").eq("id", alert.deal_score_id).maybeSingle()
+  ]);
+  return { product, score };
+}
+
+function money(value: unknown) {
+  const amount = Number(value ?? 0);
+  return Number.isFinite(amount) ? `${Math.round(amount)} CHF` : "—";
+}
+
+function negotiationReply(product: any, score: any) {
+  return `📉 Négociation préparée
+
+Produit : ${product?.title ?? "Annonce"}
+Offre maximum conseillée : ${money(score?.maximum_offer)}
+Marge estimée actuelle : ${money(score?.estimated_net_profit)}
+ROI estimé : ${score?.estimated_roi_percent != null ? `${Number(score.estimated_roi_percent).toFixed(1)} %` : "—"}
+
+Plan :
+${score?.action_plan ?? "Négocie sous l’offre maximum, vérifie l’état, les frais et l’authenticité avant paiement."}`;
+}
+
+async function updateAlertStatus(alertId: string, userId: string, status: string) {
+  const { error } = await serviceDb().from("alerts").update({ status }).eq("id", alertId).eq("user_id", userId);
+  if (error) throw error;
 }
 
 async function startRadarWizard(ctx:any) {
@@ -348,26 +379,78 @@ export function createBot() {
     await scanAndReply(ctx, ctx.match[1], user.id);
   });
   bot.action(/^(save|reject|remind|noremind|negotiate|analysis):(.+)$/, async (ctx) => {
-    const user = await userFor(ctx);
-    const action = ctx.match[1];
+    const rawAction = ctx.match[1];
     const alertId = ctx.match[2];
-    const { data: alert } = await serviceDb().from("alerts").select("*").eq("id", alertId).eq("user_id", user.id).maybeSingle();
-    if (!alert) return ctx.answerCbQuery("Action refusée");
-    if (action === "analysis") {
-      await replyWithFullAnalysis(ctx, alert);
+    if (!isTelegramDealAction(rawAction)) {
+      await ctx.answerCbQuery("Action inconnue", { show_alert: true });
       return;
     }
-    if (action === "save") await serviceDb().from("saved_deals").upsert({ user_id: user.id, product_id: alert.product_id });
-    if (action === "reject") await serviceDb().from("rejected_products").upsert({ user_id: user.id, product_id: alert.product_id, reason: "Telegram" });
-    if (action === "remind") {
-      const { data: product } = await serviceDb().from("products").select("auction_end_at").eq("id", alert.product_id).single();
-      if (product?.auction_end_at) await serviceDb().from("auction_reminders").upsert({
-        user_id: user.id, product_id: alert.product_id, radar_id: alert.radar_id,
-        remind_at: new Date(new Date(product.auction_end_at).getTime() - 3_600_000).toISOString(), status: "pending"
-      });
+    const action: TelegramDealAction = rawAction;
+    try {
+      const user = await userFor(ctx);
+      const { data: alert, error: alertError } = await serviceDb().from("alerts").select("*").eq("id", alertId).eq("user_id", user.id).maybeSingle();
+      if (alertError) throw alertError;
+      if (!alert) {
+        await ctx.answerCbQuery("Alerte introuvable ou non liée à ton compte.", { show_alert: true });
+        return;
+      }
+      if (action === "analysis") {
+        await replyWithFullAnalysis(ctx, alert);
+        return;
+      }
+      if (action === "noremind") {
+        await ctx.answerCbQuery("Rappel ignoré");
+        await ctx.reply("👌 Aucun rappel créé pour cette annonce.");
+        return;
+      }
+      const { product, score } = await loadDealContext(alert);
+      if (action === "save") {
+        const { error: saveError } = await serviceDb().from("saved_deals").upsert({ user_id: user.id, product_id: alert.product_id });
+        if (saveError) throw saveError;
+        await serviceDb().from("rejected_products").delete().eq("user_id", user.id).eq("product_id", alert.product_id);
+        await updateAlertStatus(alertId, user.id, "saved");
+        await ctx.answerCbQuery("Sauvegardé");
+        await ctx.reply("✅ Deal sauvegardé. Tu le retrouves dans le Dashboard > Opportunités.");
+        return;
+      }
+      if (action === "reject") {
+        const { error: rejectError } = await serviceDb().from("rejected_products").upsert({ user_id: user.id, product_id: alert.product_id, reason: "Telegram" });
+        if (rejectError) throw rejectError;
+        await serviceDb().from("saved_deals").delete().eq("user_id", user.id).eq("product_id", alert.product_id);
+        await updateAlertStatus(alertId, user.id, "rejected");
+        await ctx.answerCbQuery("Rejeté");
+        await ctx.reply("❌ Deal rejeté. Il sera évité dans les prochains scans.");
+        return;
+      }
+      if (action === "negotiate") {
+        const { error: saveError } = await serviceDb().from("saved_deals").upsert({ user_id: user.id, product_id: alert.product_id });
+        if (saveError) throw saveError;
+        await serviceDb().from("rejected_products").delete().eq("user_id", user.id).eq("product_id", alert.product_id);
+        await updateAlertStatus(alertId, user.id, "negotiating");
+        await ctx.answerCbQuery("Négociation préparée");
+        await ctx.reply(negotiationReply(product, score));
+        return;
+      }
+      if (action === "remind") {
+        if (!product?.auction_end_at) {
+          await ctx.answerCbQuery("Pas de date d’enchère détectée.", { show_alert: true });
+          await ctx.reply("🔔 Rappel impossible : cette annonce n’a pas de date de fin d’enchère exploitable.");
+          return;
+        }
+        const { error: reminderError } = await serviceDb().from("auction_reminders").upsert({
+          user_id: user.id, product_id: alert.product_id, radar_id: alert.radar_id,
+          remind_at: new Date(new Date(product.auction_end_at).getTime() - 3_600_000).toISOString(), status: "pending"
+        });
+        if (reminderError) throw reminderError;
+        await updateAlertStatus(alertId, user.id, alertStatusForTelegramAction(action) ?? "reminder");
+        await ctx.answerCbQuery("Rappel créé");
+        await ctx.reply("🔔 Rappel créé 1h avant la fin de l’enchère.");
+      }
+    } catch (error) {
+      console.error("Action bouton Telegram impossible:", error instanceof Error ? error.message : error);
+      await ctx.answerCbQuery("Action impossible", { show_alert: true });
+      await ctx.reply("⚠️ Action impossible pour le moment. Réessaie ou ouvre le Dashboard pour vérifier ce deal.");
     }
-    await serviceDb().from("alerts").update({ status: action }).eq("id", alertId).eq("user_id", user.id);
-    await ctx.answerCbQuery("Action enregistrée");
   });
   return bot;
 }
