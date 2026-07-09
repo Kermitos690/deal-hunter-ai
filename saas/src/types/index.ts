@@ -12,6 +12,9 @@ export interface AppUser {
   plan: Plan;
   status: "active" | "suspended";
   alerts_enabled: boolean;
+  whatsapp_phone?: string | null;
+  whatsapp_alerts_enabled?: boolean;
+  whatsapp_opt_in_at?: string | null;
   stripe_customer_id?: string | null;
 }
 
@@ -124,7 +127,7 @@ export interface DealScore {
   decisionStatus?: "APPROVED" | "CONDITIONAL" | "REVIEW_REQUIRED" | "REJECTED";
   decisionRationale?: string;
   recommendation: Recommendation;
-  scoringVersion: "v2";
+  scoringVersion: "v2" | "v3";
   marketConfidence: MarketConfidence;
   comparableCount: number;
   reasons: string[];
