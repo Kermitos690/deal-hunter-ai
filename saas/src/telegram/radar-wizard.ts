@@ -18,16 +18,16 @@ export type SearchIntent = {
 const CATEGORY_PROFILES: Record<string, CategoryProfile> = {
   "montres": {
     label: "Montres",
-    examples: ["Omega Seamaster quartz", "TAG Heuer Professional", "Cartier Must Tank", "Longines DolceVita", "Seiko vintage"],
+    examples: ["Omega Seamaster quartz", "TAG Heuer Professional", "Cartier Must Tank", "Longines DolceVita", "Seiko vintage", "Rolex Oyster Datejust"],
     brands: ["Omega", "TAG Heuer", "Rolex", "Tissot", "Longines", "Cartier", "Breitling", "Tudor", "Seiko", "Citizen", "Orient", "Rado", "Ebel", "Hamilton", "IWC", "Jaeger-LeCoultre"],
     models: ["Seamaster", "Speedmaster", "De Ville", "Constellation", "Professional", "Formula 1", "Link", "Carrera", "Tank", "Santos", "Must", "DolceVita", "HydroConquest", "Datejust", "Oyster", "T-Touch"],
     keywords: ["quartz", "automatique", "vintage", "full set", "boîte", "papiers", "pile", "révision", "fonctionne", "acier", "or", "chronographe"],
     excludeKeywords: ["fake", "replica", "inspired", "homage", "bracelet seul", "boîte seule", "cadran seul", "parts only"],
-    aliases: { "tag heuer": "TAG Heuer", "tagheur": "TAG Heuer", "tagueur": "TAG Heuer", "tag": "TAG Heuer", "omega": "Omega", "oméga": "Omega", "cartié": "Cartier", "cartier": "Cartier", "longine": "Longines", "longines": "Longines" }
+    aliases: { "tag heuer": "TAG Heuer", "tagheur": "TAG Heuer", "tagueur": "TAG Heuer", "tag": "TAG Heuer", "omega": "Omega", "oméga": "Omega", "rolex": "Rolex", "olex": "Rolex", "rolllex": "Rolex", "tissot": "Tissot", "tudor": "Tudor", "cartié": "Cartier", "cartier": "Cartier", "longine": "Longines", "longines": "Longines" }
   },
   "sacs et accessoires": {
     label: "Sacs et accessoires",
-    examples: ["Louis Vuitton Speedy", "Prada nylon", "Gucci Jackie", "Fendi Baguette", "Hermès carré"],
+    examples: ["Louis Vuitton Speedy", "Prada nylon", "Gucci Jackie", "Fendi Baguette", "Hermès carré", "Dior Saddle"],
     brands: ["Louis Vuitton", "Chanel", "Prada", "Gucci", "Fendi", "Hermès", "Dior", "Celine", "Loewe", "Bottega Veneta", "Balenciaga", "Saint Laurent", "Miu Miu", "Goyard"],
     models: ["Speedy", "Neverfull", "Alma", "Keepall", "Jackie", "Marmont", "Baguette", "Peekaboo", "Saddle", "Lady Dior", "Puzzle", "Cassette", "Triomphe", "Cabas", "Kelly", "Birkin"],
     keywords: ["cuir", "toile", "monogram", "damier", "nylon", "vintage", "dustbag", "authentique", "petit défaut", "coin usé", "fermeture"],
@@ -45,7 +45,7 @@ const CATEGORY_PROFILES: Record<string, CategoryProfile> = {
   },
   "bijoux": {
     label: "Bijoux",
-    examples: ["Cartier Love", "Tiffany bracelet argent", "Bulgari B.zero1", "Van Cleef Alhambra", "Chopard Happy Diamonds"],
+    examples: ["Cartier Love", "Tiffany bracelet argent", "Bulgari B.zero1", "Van Cleef Alhambra", "Chopard Happy Diamonds", "Messika diamant"],
     brands: ["Cartier", "Tiffany", "Bulgari", "Van Cleef & Arpels", "Chopard", "Chaumet", "Piaget", "Pomellato", "Boucheron", "Messika", "Dinh Van"],
     models: ["Love", "Juste un Clou", "Trinity", "Tank", "Alhambra", "B.zero1", "Serpenti", "Return to Tiffany", "Happy Diamonds", "Possession"],
     keywords: ["or", "argent", "750", "18k", "diamant", "certificat", "poinçon", "boîte", "facture", "taille", "bracelet", "bague", "collier"],
@@ -54,7 +54,7 @@ const CATEGORY_PROFILES: Record<string, CategoryProfile> = {
   },
   "cartes à collectionner": {
     label: "Cartes à collectionner",
-    examples: ["Pokémon PSA 10", "Magic sealed", "Yu-Gi-Oh vintage", "One Piece manga rare", "Lorcana enchanted"],
+    examples: ["Pokémon PSA 10", "Magic sealed", "Yu-Gi-Oh vintage", "One Piece manga rare", "Lorcana enchanted", "Panini rookie"],
     brands: ["Pokémon", "Magic", "Yu-Gi-Oh", "One Piece", "Lorcana", "Panini", "Topps"],
     models: ["Charizard", "Dracaufeu", "Pikachu", "Evoli", "PSA", "BGS", "CGC", "1st edition", "Base Set", "sealed", "booster", "display", "ETB"],
     keywords: ["gradée", "graded", "PSA 10", "PSA 9", "sealed", "scellé", "booster", "display", "rare", "holo", "mint", "near mint"],
@@ -63,7 +63,7 @@ const CATEGORY_PROFILES: Record<string, CategoryProfile> = {
   },
   "objets de collection": {
     label: "Objets de collection",
-    examples: ["Swatch vintage", "LEGO sealed", "Bearbrick", "Supreme accessoire", "stylo Montblanc"],
+    examples: ["Swatch vintage", "LEGO sealed", "Bearbrick", "Supreme accessoire", "stylo Montblanc", "Baccarat cristal"],
     brands: ["Swatch", "LEGO", "Bearbrick", "Supreme", "Montblanc", "Zippo", "Lalique", "Baccarat", "Christofle"],
     models: ["MoonSwatch", "Scuba", "Fifty Fathoms", "Technic", "Star Wars", "Meisterstück", "limited edition", "collector"],
     keywords: ["scellé", "sealed", "vintage", "édition limitée", "numéroté", "boîte", "certificat", "neuf", "ancien"],
@@ -81,9 +81,29 @@ function profileFor(category?: string) {
   return CATEGORY_PROFILES[key] ?? DEFAULT_PROFILE;
 }
 
+function escapeRegex(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 function includesTerm(haystack: string, term: string) {
   const needle = normalized(term);
-  return needle.length > 1 && new RegExp(`(^|[^a-z0-9])${needle.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}([^a-z0-9]|$)`, "i").test(haystack);
+  return needle.length > 1 && new RegExp(`(^|[^a-z0-9])${escapeRegex(needle)}([^a-z0-9]|$)`, "i").test(haystack);
+}
+
+export function searchSuggestionsFor(category: string) {
+  return profileFor(category).examples.slice(0, 6);
+}
+
+export function searchSuggestionAt(category: string, index: number) {
+  return searchSuggestionsFor(category)[index] ?? null;
+}
+
+export function searchSuggestionKeyboard(category: string) {
+  return {
+    inline_keyboard: searchSuggestionsFor(category).map((example, index) => [
+      { text: example, callback_data: `wizsearch:${index}` }
+    ])
+  };
 }
 
 export function categorySearchPrompt(category: string) {
@@ -91,11 +111,11 @@ export function categorySearchPrompt(category: string) {
   return [
     `2/7 — Affine ton radar ${profile.label}`,
     "",
-    "Écris librement les marques, modèles, références ou mots-clés.",
-    "Je corrige les fautes courantes et je sépare marques / modèles / mots-clés.",
+    "Choisis une proposition ou écris librement les marques, modèles, références et mots-clés.",
+    "Je corrige les fautes courantes dans le contexte de la catégorie.",
     "",
-    "Exemples utiles :",
-    ...profile.examples.map((example) => `• ${example}`)
+    "Tu peux écrire par exemple :",
+    ...profile.examples.slice(0, 3).map((example) => `• ${example}`)
   ].join("\n");
 }
 
