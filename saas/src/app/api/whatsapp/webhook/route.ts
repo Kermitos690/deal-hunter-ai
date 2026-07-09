@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { jsonError } from "@/lib/api";
 import { serviceDb } from "@/lib/db/server";
 import { runRadarScan } from "@/lib/scans/run-radar-scan";
-import { scanResultText } from "@/telegram/bot";
+import { scanResultText } from "@/telegram/scan-result-text";
 import { normalizeWhatsAppPhone, sendWhatsAppText } from "@/whatsapp/client";
 
 export async function GET(request: Request) {
@@ -145,7 +145,7 @@ export async function POST(request: Request) {
   const contacts = (payload.entry ?? []).flatMap((entry: any) =>
     (entry.changes ?? []).flatMap((change: any) => change.value?.contacts ?? [])
   );
-  const names = new Map(contacts.map((contact: any) => [contact.wa_id, contact.profile?.name]));
+  const names = new Map<string, string | undefined>(contacts.map((contact: any) => [contact.wa_id, contact.profile?.name]));
 
   try {
     await Promise.all(messages.map((message) => handleMessage(message, names.get(message.from))));
