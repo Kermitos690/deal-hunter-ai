@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ebayConditionGrade, inferRadarBrand, isRelevantEbayListing } from "@/sources/ebay.adapter";
+import { ebayConditionGrade, ebayPriorityEnabled, ebaySearchUrl, inferRadarBrand, isRelevantEbayListing } from "@/sources/ebay.adapter";
 
 describe("source eBay", () => {
   it("normalise les états eBay", () => {
@@ -16,5 +16,11 @@ describe("source eBay", () => {
   it("écarte les accessoires d’un radar de montres", () => {
     expect(isRelevantEbayListing("Cadran Omega Seamaster ancien", "Montres")).toBe(false);
     expect(isRelevantEbayListing("Montre Omega Seamaster automatique", "Montres")).toBe(true);
+  });
+
+  it("prépare une recherche eBay prioritaire interne sans créer de source visible", () => {
+    expect(ebayPriorityEnabled()).toBe(true);
+    expect(ebaySearchUrl("Seiko vintage Montres")).toContain("q=Seiko+vintage+Montres");
+    expect(ebaySearchUrl("Seiko vintage Montres", true)).toContain("sort=newlyListed");
   });
 });

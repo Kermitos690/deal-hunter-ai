@@ -1,5 +1,7 @@
 import type { ProductCandidate, SourceAdapter } from "@/types";
 
+const EBAY_PRIORITY_SOURCE_URL = process.env.EBAY_PRIORITY_SOURCE_URL ?? "https://ebay.io/m/bSMD1F";
+
 function searchable(value: string) {
   return value.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase();
 }
@@ -42,6 +44,30 @@ async function accessToken() {
   return (await response.json()).access_token as string;
 }
 
+export function ebayPriorityEnabled() {
+  return process.env.ENABLE_EBAY_PRIORITY_SOURCE !== "false";
+}
+
+export function ebaySearchUrl(query: string, priority = false) {
+  const params = new URLSearchParams({ q: query, limit: "50" });
+  if (priority) {
+    params.set("sort", "newlyListed");
+  }
+  return `https://api.ebay.com/buy/browse/v1/item_summary/search?${params.toString()}`;
+}
+
+function priorityMarketplaces(marketplaces: string[]) {
+  const configured = (process.env.EBAY_PRIORITY_MARKETPLACES ?? "")
+    .split(",").map((value) => value.trim()).filter(Boolean);
+  const preferred = configured.length ? configured : ["EBAY_CH", "EBAY_US", "EBAY_GB", "EBAY_DE"];
+  const selected = marketplaces.filter((marketplace) => preferred.includes(marketplace));
+  return selected.length ? selected : marketplaces.slice(0, 2);
+}
+
+function sortPriorityFirst(items: ProductCandidate[]) {
+  return items.sort((a, b) => Number(Boolean(b.rawPayload?.internalPriorityEbaySource)) - Number(Boolean(a.rawPayload?.internalPriorityEbaySource)));
+}
+
 export const ebayAdapter: SourceAdapter = {
   name: "ebay",
   enabled: process.env.ENABLE_EBAY_SOURCE === "true",
@@ -53,13 +79,19 @@ export const ebayAdapter: SourceAdapter = {
       : [[...radar.models, ...radar.include_keywords, radar.category].filter(Boolean).join(" ")];
     const marketplaces = (process.env.EBAY_MARKETPLACES ?? "EBAY_CH,EBAY_FR,EBAY_DE,EBAY_IT,EBAY_GB,EBAY_US")
       .split(",").map((value) => value.trim()).filter(Boolean);
-    const resultGroups = await Promise.all(searches.flatMap((query) => marketplaces.map(async (marketplace) => {
+    const searchPlan = [
+      ...(ebayPriorityEnabled()
+        ? searches.flatMap((query) => priorityMarketplaces(marketplaces).map((marketplace) => ({ query, marketplace, priority: true })))
+        : []),
+      ...searches.flatMap((query) => marketplaces.map((marketplace) => ({ query, marketplace, priority: false })))
+    ];
+    const resultGroups = await Promise.all(searchPlan.map(async ({ query, marketplace, priority }) => {
       const response = await fetch(
-        `https://api.ebay.com/buy/browse/v1/item_summary/search?q=${encodeURIComponent(query)}&limit=50`,
+        ebaySearchUrl(query, priority),
         { headers: { Authorization: `Bearer ${token}`, "X-EBAY-C-MARKETPLACE-ID": marketplace } }
       );
       if (!response.ok) {
-        console.warn(`Recherche eBay ${marketplace}: ${response.status}`);
+        console.warn(`Recherche eBay ${marketplace}${priority ? " prioritaire" : ""}: ${response.status}`);
         return [];
       }
       const body = await response.json();
@@ -87,11 +119,16 @@ export const ebayAdapter: SourceAdapter = {
         sellerCountry: item.itemLocation?.country,
         productUrl: String(item.itemWebUrl),
         imageUrls: [item.image?.imageUrl, ...(item.additionalImages ?? []).map((x: any) => x.imageUrl)].filter(Boolean),
-        rawPayload: { ...item, marketplace }
+        rawPayload: {
+          ...item,
+          marketplace,
+          internalPriorityEbaySource: priority,
+          internalPrioritySourceUrl: priority ? EBAY_PRIORITY_SOURCE_URL : undefined
+        }
       })
     );
-    })));
-    const results = resultGroups.flat();
+    }));
+    const results = sortPriorityFirst(resultGroups.flat());
     return [...new Map(results.map((item) => [item.sourceItemId, item])).values()];
   }
 };
