@@ -37,6 +37,10 @@ function dashboardLoginUrl(telegramId: string) {
   return `${process.env.APP_BASE_URL}/api/auth/telegram/session?token=${token}`;
 }
 
+function startPayload(ctx: any) {
+  return String(ctx.startPayload ?? ctx.payload ?? ctx.message?.text?.split(/\s+/)[1] ?? "").trim().toLowerCase();
+}
+
 async function userFor(ctx: any) {
   const telegramId = String(ctx.from.id);
   const role = telegramId === process.env.ADMIN_TELEGRAM_ID ? "admin" : "user";
@@ -129,6 +133,23 @@ export function createBot() {
   });
 
   bot.start(async (ctx) => {
+    const payload = startPayload(ctx);
+    if (payload === "newradar") {
+      await startRadarWizard(ctx);
+      return;
+    }
+    if (payload === "radars") {
+      await listRadars(ctx);
+      return;
+    }
+    if (payload === "deals") {
+      await replyDeals(ctx);
+      return;
+    }
+    if (payload === "alerts") {
+      await replyAlerts(ctx);
+      return;
+    }
     const user = await userFor(ctx);
     await ctx.reply(
       `Bienvenue ${user.display_name} 👋\n\nCrée tes radars privés et reçois uniquement tes opportunités.`,
@@ -249,16 +270,20 @@ export function createBot() {
   }
   bot.command("radars", listRadars);
   bot.action("list_radars", async (ctx) => { await ctx.answerCbQuery(); await listRadars(ctx); });
-  bot.command("alerts", async (ctx) => {
+
+  async function replyAlerts(ctx: any) {
     const user = await userFor(ctx);
     const { data } = await serviceDb().from("alerts").select("id,status,sent_at").eq("user_id", user.id).order("created_at", { ascending: false }).limit(10);
     await ctx.reply(data?.length ? data.map((a: any) => `• ${a.status} — ${a.sent_at ?? "en attente"}`).join("\n") : "Aucune alerte.");
-  });
-  bot.command("deals", async (ctx) => {
+  }
+  bot.command("alerts", replyAlerts);
+
+  async function replyDeals(ctx: any) {
     const user = await userFor(ctx);
     const { data } = await serviceDb().from("deal_scores").select("total_score,recommendation,estimated_net_profit").eq("user_id", user.id).order("total_score", { ascending: false }).limit(10);
     await ctx.reply(data?.length ? data.map((d: any) => `⭐ ${d.total_score} — ${d.recommendation} — +${d.estimated_net_profit} CHF`).join("\n") : "Aucun deal.");
-  });
+  }
+  bot.command("deals", replyDeals);
   bot.command("settings", (ctx) => ctx.reply(dashboardLoginUrl(String(ctx.from.id))));
   bot.command("stop", async (ctx) => {
     const user = await userFor(ctx);
