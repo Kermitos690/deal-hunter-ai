@@ -24,11 +24,14 @@ export function summarizeSourceLogs(logs: SourceLog[]) {
 }
 
 export function configuredSources() {
+  const liveProxyDetail = process.env.LIVE_SOURCE_PROXY_URL || process.env.SWISS_SOURCE_PROXY_URL
+    ? "Proxy live configuré pour éviter les blocages IP Vercel"
+    : "Accès direct Vercel, risque HTTP 403 sur marketplaces suisses";
   return [
     { source:"ebay", status:process.env.ENABLE_EBAY_SOURCE==="true"?"active":"inactive", detail:process.env.EBAY_CLIENT_ID&&process.env.EBAY_CLIENT_SECRET?"OAuth configuré":"Identifiants manquants" },
-    { source:"ricardo", status:process.env.ENABLE_RICARDO_SOURCE==="false"?"inactive":"active", detail:"Marketplace suisse, annonces actives vérifiées par page détail" },
-    { source:"anibis", status:process.env.ENABLE_ANIBIS_SOURCE==="false"?"inactive":"active", detail:"Marketplace suisse, annonces actives vérifiées par page détail" },
-    { source:"tutti", status:process.env.ENABLE_TUTTI_SOURCE==="false"?"inactive":"active", detail:"Marketplace suisse live, annonces acceptées seulement après vérification page détail + prix" },
+    { source:"ricardo", status:process.env.ENABLE_RICARDO_SOURCE==="false"?"inactive":"active", detail:`Marketplace suisse, annonces actives vérifiées par page détail. ${liveProxyDetail}` },
+    { source:"anibis", status:process.env.ENABLE_ANIBIS_SOURCE==="false"?"inactive":"active", detail:`Marketplace suisse, annonces actives vérifiées par page détail. ${liveProxyDetail}` },
+    { source:"tutti", status:process.env.ENABLE_TUTTI_SOURCE==="false"?"inactive":"active", detail:`Marketplace suisse live, annonces acceptées seulement après vérification page détail + prix. ${liveProxyDetail}` },
     { source:"komehyo", status:process.env.ENABLE_KOMEHYO_SOURCE==="false"?"inactive":"active", detail:"Catalogue public Japon, annonces actives pondérées" },
     { source:"email-alerts", status:process.env.ENABLE_EMAIL_ALERTS_SOURCE==="true"?"active":"inactive", detail:process.env.EMAIL_ADDRESS&&process.env.EMAIL_APP_PASSWORD?`IMAP configuré, mailbox ${process.env.EMAIL_MAILBOX || "INBOX"}, lookback ${process.env.EMAIL_LOOKBACK_HOURS ?? 48} h`:"IMAP incomplet" },
     { source:"rss", status:process.env.ENABLE_RSS_SOURCE==="true"?"active":"inactive", detail:process.env.PUBLIC_FEED_URLS?"Flux configuré":"Aucun flux" },

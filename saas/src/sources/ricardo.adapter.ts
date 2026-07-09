@@ -1,5 +1,6 @@
 import type { ConditionGrade, ProductCandidate, Radar, SourceAdapter } from "@/types";
 import { inferRadarBrand } from "./ebay.adapter";
+import { liveFetch } from "./live-http";
 
 const BASE_URL = "https://www.ricardo.ch";
 const BROWSER_HEADERS = {
@@ -70,7 +71,7 @@ function detailLinks(html: string) {
 }
 
 async function detailCandidate(url: string, radar: Radar): Promise<ProductCandidate | null> {
-  const response = await fetch(url, {
+  const response = await liveFetch(url, {
     headers: BROWSER_HEADERS,
     signal: AbortSignal.timeout(12_000),
     next: { revalidate: 900 }
@@ -117,7 +118,7 @@ export const ricardoAdapter: SourceAdapter = {
       : [[...radar.models, ...radar.include_keywords, radar.category].filter(Boolean).join(" ")];
     const results = await Promise.all(queries.slice(0, 6).map(async (query) => {
       try {
-        const response = await fetch(`${BASE_URL}/fr/s/${encodeURIComponent(query)}/`, {
+        const response = await liveFetch(`${BASE_URL}/fr/s/${encodeURIComponent(query)}/`, {
           headers: BROWSER_HEADERS,
           signal: AbortSignal.timeout(12_000),
           next: { revalidate: 900 }

@@ -20,6 +20,8 @@ const schema = z.object({
   ENABLE_RSS_SOURCE: z.string().default("false"),
   PUBLIC_FEED_URLS: z.string().optional(),
   ENABLE_EMAIL_ALERTS_SOURCE: z.string().default("false"),
+  LIVE_SOURCE_PROXY_URL: z.string().url().optional(),
+  SWISS_SOURCE_PROXY_URL: z.string().url().optional(),
   EMAIL_IMAP_SERVER: z.string().optional(),
   EMAIL_IMAP_PORT: z.string().default("993"),
   EMAIL_MAILBOX: z.string().default("INBOX"),
