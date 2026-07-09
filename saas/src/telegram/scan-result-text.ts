@@ -30,6 +30,12 @@ function rejectionSummaryText(summary?: Record<string, number>) {
   return `\n\n🔍 Filtres bloquants principaux\n${entries.map(([reason, count]) => `• ${REJECTION_LABELS[reason] ?? reason} : ${count}`).join("\n")}`;
 }
 
+function sourceErrorsText(errors?: string[]) {
+  const entries = (errors ?? []).filter(Boolean).slice(0, 5);
+  if (!entries.length) return "";
+  return `\n\nSources à vérifier\n${entries.map((error) => `• ${error}`).join("\n")}`;
+}
+
 export function scanResultText(result: {
   candidatesFound: number;
   alertsSent: number;
@@ -38,7 +44,17 @@ export function scanResultText(result: {
   rejectionSummary?: Record<string, number>;
   skipped?: boolean;
   reason?: string;
+  sourceErrors?: string[];
 }) {
+  if (result.skipped && result.reason === "all_sources_failed") {
+    return `⚠️ Scan terminé sans résultat exploitable.
+
+Toutes les sources choisies sont temporairement indisponibles ou bloquées.${sourceErrorsText(result.sourceErrors)}
+
+Action conseillée : relance le radar avec eBay mondial ou « Toutes sources globales », puis resserre les filtres si tu reçois trop de résultats.
+
+_scan-v5_`;
+  }
   if (result.skipped) {
     const reason = result.reason === "radar_locked"
       ? "un scan est déjà en cours"
@@ -57,5 +73,5 @@ export function scanResultText(result: {
     : alertsCreated
       ? "Des opportunités existent, mais Telegram n’a pas pu les envoyer. Vérifie le bot, ton compte Telegram et les alertes du radar."
       : "Aucune annonce ne respecte encore tous les critères de ce radar.";
-  return `✅ Scan terminé\n\n🔎 ${result.candidatesFound} annonce(s) analysée(s)\n🚨 ${alertsCreated} opportunité(s) créée(s)\n🎯 Taux de sélection : ${selectedRate} %\n📨 ${result.alertsSent} alerte(s) Telegram envoyée(s)${telegramSkipped ? `\n⚠️ ${telegramSkipped} alerte(s) non envoyée(s) côté Telegram` : ""}\n\n${conclusion}${rejectionSummaryText(result.rejectionSummary)}\n\n_${SCAN_RESULT_FORMAT_VERSION}_`;
+  return `✅ Scan terminé\n\n🔎 ${result.candidatesFound} annonce(s) analysée(s)\n🚨 ${alertsCreated} opportunité(s) créée(s)\n🎯 Taux de sélection : ${selectedRate} %\n📨 ${result.alertsSent} alerte(s) Telegram envoyée(s)${telegramSkipped ? `\n⚠️ ${telegramSkipped} alerte(s) non envoyée(s) côté Telegram` : ""}\n\n${conclusion}${rejectionSummaryText(result.rejectionSummary)}${sourceErrorsText(result.sourceErrors)}\n\n_${SCAN_RESULT_FORMAT_VERSION}_`;
 }

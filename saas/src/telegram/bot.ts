@@ -14,7 +14,7 @@ const ACTIVE_RADAR_SOURCES = ["ebay", "ricardo", "anibis", "komehyo", "email-ale
 export { scanResultText } from "@/telegram/scan-result-text";
 
 async function scanAndReply(ctx: any, radarId: string, userId: string) {
-  await ctx.reply("🔎 Premier scan en cours… Les sources mondiales sont interrogées.");
+  await ctx.reply("🔎 Scan en cours… Les sources sélectionnées sont interrogées.");
   try {
     const result = await runRadarScan(radarId, userId);
     await ctx.reply(scanResultText(result));

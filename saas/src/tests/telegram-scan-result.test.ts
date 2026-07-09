@@ -29,6 +29,19 @@ describe("scanResultText", () => {
       candidatesFound: 0, alertsSent: 0, skipped: true, reason: "radar_locked"
     })).toContain("déjà en cours");
   });
+
+  it("explique clairement quand toutes les sources échouent", () => {
+    const text = scanResultText({
+      candidatesFound: 0,
+      alertsSent: 0,
+      skipped: true,
+      reason: "all_sources_failed",
+      sourceErrors: ["ricardo: HTTP 403"]
+    });
+    expect(text).toContain("Scan terminé sans résultat exploitable");
+    expect(text).toContain("ricardo: HTTP 403");
+    expect(text).toContain("eBay mondial");
+  });
 });
 
 describe("parseSearchIntent", () => {

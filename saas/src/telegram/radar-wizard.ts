@@ -179,9 +179,9 @@ export const conditionKeyboard = { inline_keyboard:[
   [{text:"🛠 Usagé / réparation",callback_data:"wizcond:B,C,REPAIR"},{text:"🌐 Tous les états",callback_data:"wizcond:NEW,A,B,C,REPAIR,UNKNOWN"}]
 ]};
 export const sourceKeyboard = { inline_keyboard:[
-  [{text:"🇨🇭 Ricardo",callback_data:"wizsrc:ricardo"},{text:"🇨🇭 Anibis",callback_data:"wizsrc:anibis"}],
+  [{text:"🔎 Toutes sources actives",callback_data:"wizsrc:all"}],
   [{text:"🌍 eBay mondial",callback_data:"wizsrc:ebay"},{text:"🇯🇵 KOMEHYO",callback_data:"wizsrc:komehyo"}],
-  [{text:"🔎 Toutes sources globales",callback_data:"wizsrc:all"}]
+  [{text:"🇨🇭 Ricardo suisse",callback_data:"wizsrc:ricardo"},{text:"🇨🇭 Anibis suisse",callback_data:"wizsrc:anibis"}],
 ]};
 export const frequencyKeyboard = { inline_keyboard:[
   [{text:"Toutes les 6 h",callback_data:"wizfreq:360"},{text:"Toutes les 12 h",callback_data:"wizfreq:720"}],
