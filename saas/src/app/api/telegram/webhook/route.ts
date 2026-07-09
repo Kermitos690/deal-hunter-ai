@@ -11,9 +11,15 @@ export async function POST(request: Request) {
   }
   const update = await request.json();
   const updateId = Number(update.update_id);
+  if (!Number.isFinite(updateId)) {
+    return jsonError("Update Telegram invalide.", 400);
+  }
   const { error } = await serviceDb().from("processed_updates").insert({ update_id: updateId });
   if (error?.code === "23505") return NextResponse.json({ ok: true, duplicate: true });
   if (error) return jsonError("Impossible d’enregistrer l’update.", 500);
+  if (!update.message && !update.callback_query) {
+    return NextResponse.json({ ok: true, ignored: true });
+  }
   try {
     await createBot().handleUpdate(update);
   } catch (error) {
