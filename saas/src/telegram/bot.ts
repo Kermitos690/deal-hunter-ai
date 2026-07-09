@@ -4,6 +4,7 @@ import { enforcePlanLimits } from "@/plans/limits";
 import { runRadarScan } from "@/lib/scans/run-radar-scan";
 import { parseAuctionResponse } from "@/telegram/auction-response";
 import { createSessionToken } from "@/lib/security/session";
+import { formatFullDealAnalysis } from "@/telegram/full-analysis";
 import { categoryKeyboard, categorySearchPrompt, conditionKeyboard, frequencyKeyboard, parseSearchIntent, positiveNumber, searchSuggestionAt, searchSuggestionKeyboard, sourceKeyboard } from "@/telegram/radar-wizard";
 
 const ACTIVE_RADAR_SOURCES = ["ebay", "ricardo", "anibis", "komehyo", "email-alerts", "rss"];
@@ -133,6 +134,26 @@ async function acceptWizardSearch(ctx: any, telegramId: string, payload: Record<
   if(!intent.brands.length && !intent.models.length && !intent.includeKeywords.length){await ctx.reply("Indique au moins une marque, un modèle ou un mot-clé utile.");return}
   await setSession(telegramId,"wizard:budget",{...payload,brands:intent.brands,models:intent.models,include_keywords:intent.includeKeywords,exclude_keywords:intent.excludeKeywords});
   await ctx.reply(`✅ Recherche comprise\n${searchIntentLines(intent)}\n\n3/7 — Indique ton budget maximum en CHF.\nExemple : 1500`);
+}
+
+async function replyWithFullAnalysis(ctx: any, alert: any) {
+  const [{ data: product }, { data: score }] = await Promise.all([
+    serviceDb().from("products").select("*").eq("id", alert.product_id).maybeSingle(),
+    serviceDb().from("deal_scores").select("*").eq("id", alert.deal_score_id).maybeSingle()
+  ]);
+  if (!product || !score) {
+    await ctx.answerCbQuery("Analyse indisponible");
+    await ctx.reply("⚠️ Analyse complète indisponible pour cette alerte. Le produit ou le score n’est plus accessible.");
+    return;
+  }
+  const { data: comparables } = await serviceDb()
+    .from("deal_score_comparables")
+    .select("source,title,price,currency,evidence_url,confidence,match_score")
+    .eq("deal_score_id", score.id)
+    .order("weight", { ascending: false })
+    .limit(5);
+  await ctx.answerCbQuery("Analyse envoyée");
+  await ctx.reply(formatFullDealAnalysis(product, score, comparables ?? []), { disable_web_page_preview: true });
 }
 
 async function startRadarWizard(ctx:any) {
@@ -342,6 +363,10 @@ export function createBot() {
     const alertId = ctx.match[2];
     const { data: alert } = await serviceDb().from("alerts").select("*").eq("id", alertId).eq("user_id", user.id).maybeSingle();
     if (!alert) return ctx.answerCbQuery("Action refusée");
+    if (action === "analysis") {
+      await replyWithFullAnalysis(ctx, alert);
+      return;
+    }
     if (action === "save") await serviceDb().from("saved_deals").upsert({ user_id: user.id, product_id: alert.product_id });
     if (action === "reject") await serviceDb().from("rejected_products").upsert({ user_id: user.id, product_id: alert.product_id, reason: "Telegram" });
     if (action === "remind") {
