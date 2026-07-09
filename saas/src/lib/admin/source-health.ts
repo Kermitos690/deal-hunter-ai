@@ -29,7 +29,7 @@ export function configuredSources() {
     { source:"ricardo", status:process.env.ENABLE_RICARDO_SOURCE==="false"?"inactive":"active", detail:"Marketplace suisse, annonces actives vérifiées par page détail" },
     { source:"anibis", status:process.env.ENABLE_ANIBIS_SOURCE==="false"?"inactive":"active", detail:"Marketplace suisse, annonces actives vérifiées par page détail" },
     { source:"komehyo", status:process.env.ENABLE_KOMEHYO_SOURCE==="false"?"inactive":"active", detail:"Catalogue public Japon, annonces actives pondérées" },
-    { source:"email-alerts", status:process.env.ENABLE_EMAIL_ALERTS_SOURCE==="true"?"active":"inactive", detail:process.env.EMAIL_ADDRESS&&process.env.EMAIL_APP_PASSWORD?"IMAP configuré":"IMAP incomplet" },
+    { source:"email-alerts", status:process.env.ENABLE_EMAIL_ALERTS_SOURCE==="true"?"active":"inactive", detail:process.env.EMAIL_ADDRESS&&process.env.EMAIL_APP_PASSWORD?`IMAP configuré, mailbox ${process.env.EMAIL_MAILBOX || "INBOX"}, lookback ${process.env.EMAIL_LOOKBACK_HOURS ?? 48} h`:"IMAP incomplet" },
     { source:"rss", status:process.env.ENABLE_RSS_SOURCE==="true"?"active":"inactive", detail:process.env.PUBLIC_FEED_URLS?"Flux configuré":"Aucun flux" },
     { source:"whatsapp", status:process.env.WHATSAPP_ACCESS_TOKEN&&process.env.WHATSAPP_PHONE_NUMBER_ID?"active":"inactive", detail:"Canal d’alerte, pas une source de produits" },
     { source:"yahoo-japan", status:"not_configured", detail:"Connecteur développé, Client ID absent" },
