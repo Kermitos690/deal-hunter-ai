@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { scanResultText } from "@/telegram/bot";
+import { parseSearchIntent, searchSuggestionsFor } from "@/telegram/radar-wizard";
 
 describe("scanResultText", () => {
   it("résume les annonces analysées et alertes Telegram envoyées", () => {
@@ -26,5 +27,22 @@ describe("scanResultText", () => {
     expect(scanResultText({
       candidatesFound: 0, alertsSent: 0, skipped: true, reason: "radar_locked"
     })).toContain("déjà en cours");
+  });
+});
+
+describe("parseSearchIntent", () => {
+  it("corrige les fautes dans le contexte montres", () => {
+    const intent = parseSearchIntent("Olex Omega longines", "Montres");
+    expect(intent.brands).toEqual(expect.arrayContaining(["Rolex", "Omega", "Longines"]));
+  });
+
+  it("garde des propositions spécifiques pour les sneakers", () => {
+    const suggestions = searchSuggestionsFor("Sneakers");
+    expect(suggestions).toContain("Nike SB Dunk");
+    expect(suggestions).not.toContain("TAG Heuer Professional");
+
+    const intent = parseSearchIntent("Nike SB Dunk", "Sneakers");
+    expect(intent.brands).toContain("Nike");
+    expect(intent.models).toEqual(expect.arrayContaining(["Dunk", "SB Dunk"]));
   });
 });
