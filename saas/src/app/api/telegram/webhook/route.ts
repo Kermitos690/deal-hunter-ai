@@ -9,7 +9,10 @@ export async function POST(request: Request) {
     console.warn("Webhook Telegram refusé : signature absente ou invalide.");
     return jsonError("Webhook refusé.", 401);
   }
-  const update = await request.json();
+  const update = await request.json().catch(() => null);
+  if (!update || typeof update !== "object") {
+    return jsonError("Payload Telegram invalide.", 400);
+  }
   const updateId = Number(update.update_id);
   if (!Number.isFinite(updateId)) {
     return jsonError("Update Telegram invalide.", 400);
