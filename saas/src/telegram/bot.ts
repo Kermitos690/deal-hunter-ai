@@ -4,10 +4,10 @@ import { enforcePlanLimits } from "@/plans/limits";
 import { runRadarScan } from "@/lib/scans/run-radar-scan";
 import { parseAuctionResponse } from "@/telegram/auction-response";
 import { createSessionToken } from "@/lib/security/session";
-import { categoryKeyboard, conditionKeyboard, frequencyKeyboard, parseBrands, positiveNumber, sourceKeyboard } from "@/telegram/radar-wizard";
+import { categoryKeyboard, categorySearchPrompt, conditionKeyboard, frequencyKeyboard, parseSearchIntent, positiveNumber, sourceKeyboard } from "@/telegram/radar-wizard";
 
-const ACTIVE_RADAR_SOURCES = ["ebay", "komehyo", "email-alerts", "rss"];
-const SCAN_RESULT_FORMAT_VERSION = "scan-v3";
+const ACTIVE_RADAR_SOURCES = ["ebay", "ricardo", "anibis", "komehyo", "email-alerts", "rss"];
+const SCAN_RESULT_FORMAT_VERSION = "scan-v5";
 
 const REJECTION_LABELS: Record<string, string> = {
   price_above_max: "prix au-dessus du max",
@@ -175,7 +175,7 @@ export function createBot() {
     const {data:session}=await serviceDb().from("telegram_sessions").select("state").eq("telegram_id",telegramId).maybeSingle();
     if(session?.state!=="wizard:category") return ctx.answerCbQuery();
     await setSession(telegramId,"wizard:brand",{category}); await ctx.answerCbQuery();
-    await ctx.reply("2/7 — Écris la ou les marques recherchées.\nExemple : Omega Rolex TAG Heuer\n\nLes virgules ne sont pas obligatoires.");
+    await ctx.reply(categorySearchPrompt(category));
   });
   bot.action(/^wizcond:(.+)$/,async(ctx)=>{
     const telegramId=String(ctx.from.id); const {data:session}=await serviceDb().from("telegram_sessions").select("*").eq("telegram_id",telegramId).maybeSingle();
@@ -189,7 +189,7 @@ export function createBot() {
     if(session?.state!=="wizard:source") return ctx.answerCbQuery();
     const sources=ctx.match[1]==="all"?ACTIVE_RADAR_SOURCES:[ctx.match[1]];
     await setSession(telegramId,"wizard:margin",{...(session.payload??{}),sources}); await ctx.answerCbQuery();
-    await ctx.reply("6/7 — Indique la marge nette minimum souhaitée en CHF.\nExemple : 50");
+    await ctx.reply("6/7 — Indique la marge nette minimum souhaitée en CHF.\nExemple : 50\n\nAstuce : mets 1 pour explorer très large, puis resserre ensuite.");
   });
   bot.action(/^wizfreq:(360|720|1440)$/,async(ctx)=>{
     const telegramId=String(ctx.from.id); const {data:session}=await serviceDb().from("telegram_sessions").select("*").eq("telegram_id",telegramId).maybeSingle();
@@ -202,9 +202,14 @@ export function createBot() {
     ]);
     const limits=enforcePlanLimits(user,{activeRadars:activeRadars??0,alertsToday:alertsToday??0,requestedScanMinutes:payload.frequency});
     if(!limits.allowed){await clearSession(telegramId);await ctx.answerCbQuery();return ctx.reply(`❌ ${limits.errors.join(" ")}`)}
-    const brands=payload.brands as string[]; const name=`${brands.join(", ")} — ${payload.category}`;
+    const brands=(payload.brands as string[] | undefined) ?? [];
+    const models=(payload.models as string[] | undefined) ?? [];
+    const includeKeywords=(payload.include_keywords as string[] | undefined) ?? [];
+    const titleBits = brands.length ? brands : models.length ? models.slice(0, 3) : includeKeywords.slice(0, 3);
+    const name=`${titleBits.length ? titleBits.join(", ") : "Radar"} — ${payload.category}`;
     const {data:createdRadar,error}=await serviceDb().from("radars").insert({
-      user_id:user.id,name,category:payload.category,brands,max_buy_price:payload.budget,
+      user_id:user.id,name,category:payload.category,brands,models,include_keywords:includeKeywords,
+      exclude_keywords:(payload.exclude_keywords as string[] | undefined) ?? [],max_buy_price:payload.budget,
       accepted_conditions:payload.condition,sources:payload.sources,min_profit:payload.margin,
       sale_types:["BUY_NOW","AUCTION"],min_score:70,scan_frequency_minutes:payload.frequency,
       next_scan_at:new Date().toISOString()
@@ -287,9 +292,15 @@ export function createBot() {
     const current=session.state.split(":")[1];
     const payload={...(session.payload??{})};
     if(current==="brand"){
-      const brands=parseBrands(ctx.message.text); if(!brands.length){await ctx.reply("Indique au moins une marque.");return}
-      await setSession(telegramId,"wizard:budget",{...payload,brands});
-      await ctx.reply(`Marques reconnues : ${brands.join(", ")}\n\n3/7 — Indique ton budget maximum en CHF.\nExemple : 1500`); return;
+      const intent=parseSearchIntent(ctx.message.text, payload.category as string);
+      if(!intent.brands.length && !intent.models.length && !intent.includeKeywords.length){await ctx.reply("Indique au moins une marque, un modèle ou un mot-clé utile.");return}
+      await setSession(telegramId,"wizard:budget",{...payload,brands:intent.brands,models:intent.models,include_keywords:intent.includeKeywords,exclude_keywords:intent.excludeKeywords});
+      const lines = [
+        intent.brands.length ? `Marques : ${intent.brands.join(", ")}` : null,
+        intent.models.length ? `Modèles : ${intent.models.join(", ")}` : null,
+        intent.includeKeywords.length ? `Mots-clés : ${intent.includeKeywords.join(", ")}` : null
+      ].filter(Boolean).join("\n");
+      await ctx.reply(`✅ Recherche comprise\n${lines}\n\n3/7 — Indique ton budget maximum en CHF.\nExemple : 1500`); return;
     }
     if(current==="budget"){
       const budget=positiveNumber(ctx.message.text); if(!budget){await ctx.reply("Budget invalide. Écris uniquement un montant positif, par exemple 1500.");return}
