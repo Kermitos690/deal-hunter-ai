@@ -39,6 +39,7 @@ describe("scanResultText", () => {
       sourceErrors: ["ricardo: HTTP 403"]
     });
     expect(text).toContain("Scan terminé sans résultat exploitable");
+    expect(text).toContain("temporairement instables");
     expect(text).toContain("ricardo: HTTP 403");
     expect(text).toContain("eBay mondial");
   });

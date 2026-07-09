@@ -33,7 +33,7 @@ function rejectionSummaryText(summary?: Record<string, number>) {
 function sourceErrorsText(errors?: string[]) {
   const entries = (errors ?? []).filter(Boolean).slice(0, 5);
   if (!entries.length) return "";
-  return `\n\nSources à vérifier\n${entries.map((error) => `• ${error}`).join("\n")}`;
+  return `\n\nSources à vérifier\nCertaines sources sont temporairement instables. Le radar continue avec les autres sources disponibles.\n${entries.map((error) => `• ${error}`).join("\n")}`;
 }
 
 export function scanResultText(result: {

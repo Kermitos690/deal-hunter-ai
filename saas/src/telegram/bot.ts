@@ -9,6 +9,8 @@ import { scanResultText } from "@/telegram/scan-result-text";
 import { alertStatusForTelegramAction, isTelegramDealAction, type TelegramDealAction } from "@/telegram/deal-actions";
 import { looksLikeWhatsAppPhone, normalizeWhatsAppPhone } from "@/whatsapp/client";
 import { categoryKeyboard, categorySearchPrompt, conditionKeyboard, frequencyKeyboard, parseSearchIntent, positiveNumber, recommendedTelegramSources, searchSuggestionAt, searchSuggestionKeyboard, sourceSelectionKeyboard, TELEGRAM_SOURCE_OPTIONS } from "@/telegram/radar-wizard";
+import { mainMenuKeyboard, mainMenuText } from "@/telegram/menu";
+import { logTelegramEvent } from "@/telegram/observability";
 
 const ACTIVE_RADAR_SOURCES = ["ebay", "ricardo", "anibis", "tutti", "komehyo", "email-alerts", "rss"];
 export { scanResultText } from "@/telegram/scan-result-text";
@@ -22,9 +24,16 @@ async function safeAnswerCbQuery(ctx: any, text?: string, extra?: Record<string,
 }
 
 async function scanAndReply(ctx: any, radarId: string, userId: string) {
+  await logTelegramEvent("radar_scan_started", userId, { radar_id: radarId });
   await ctx.reply("🔎 Scan en cours… Les sources sélectionnées sont interrogées.");
   try {
     const result = await runRadarScan(radarId, userId);
+    await logTelegramEvent("radar_scan_completed", userId, {
+      radar_id: radarId,
+      candidates_found: result.candidatesFound,
+      alerts_sent: result.alertsSent,
+      skipped: Boolean(result.skipped)
+    });
     await ctx.reply(scanResultText(result), {
       reply_markup: { inline_keyboard: [
         [{ text: "📡 Mes radars", callback_data: "list_radars" }],
@@ -33,6 +42,10 @@ async function scanAndReply(ctx: any, radarId: string, userId: string) {
     });
   } catch (error) {
     console.error("Scan Telegram impossible:", error);
+    await logTelegramEvent("radar_scan_failed", userId, {
+      radar_id: radarId,
+      error: error instanceof Error ? error.message.slice(0, 180) : "unknown"
+    });
     const message = error instanceof Error ? error.message : "Erreur inconnue";
     await ctx.reply(`⚠️ Scan impossible pour le moment.\n\nDétail : ${message}\n\nTu peux le relancer depuis « Mes radars ».`, {
       reply_markup: { inline_keyboard: [[{ text: "📡 Mes radars", callback_data: "list_radars" }]] }
@@ -153,27 +166,23 @@ async function updateAlertStatus(alertId: string, userId: string, status: string
 }
 
 async function startRadarWizard(ctx:any) {
-  await userFor(ctx);
+  const user = await userFor(ctx);
+  await logTelegramEvent("radar_creation_started", user.id);
   await setSession(String(ctx.from.id),"wizard:category",{});
   await ctx.reply("1/7 — Choisis une catégorie :",{reply_markup:categoryKeyboard});
 }
 
 async function replyMainMenu(ctx: any) {
   const user = await userFor(ctx);
-  await ctx.reply(
-    `Menu Deal Hunter AI\n\nCompte : ${user.display_name}\nChoisis une action.`,
-    { reply_markup: { inline_keyboard: [
-      [{ text: "➕ Créer un radar", callback_data: "create_radar" }],
-      [{ text: "📡 Mes radars", callback_data: "list_radars" }],
-      [{ text: "🚨 Dernières alertes", callback_data: "list_alerts" }, { text: "⭐ Deals", callback_data: "list_deals" }],
-      [{ text: "🌐 Dashboard", url: dashboardLoginUrl(String(ctx.from.id)) }]
-    ] } }
-  );
+  await logTelegramEvent("telegram_menu_opened", user.id);
+  await ctx.reply(mainMenuText(user.display_name), { reply_markup: mainMenuKeyboard(dashboardLoginUrl(String(ctx.from.id))) });
 }
 
 async function replyExpiredWizardStep(ctx: any) {
+  const user = await userFor(ctx);
+  await logTelegramEvent("telegram_callback_expired", user.id);
   await safeAnswerCbQuery(ctx, "Étape expirée", { show_alert: true });
-  await ctx.reply("Cette étape n’est plus active. Reprends la création avec le bouton ci-dessous.", {
+  await ctx.reply("Ce bouton a expiré. Recommence la création du radar pour éviter une mauvaise configuration.", {
     reply_markup: { inline_keyboard: [[{ text: "➕ Recommencer le radar", callback_data: "create_radar" }]] }
   });
 }
@@ -230,7 +239,18 @@ export function createBot() {
   bot.command("id", (ctx) => ctx.reply(String(ctx.from.id)));
   bot.command("menu", replyMainMenu);
   bot.command("help", (ctx) =>
-    ctx.reply("/start /id /radars /newradar /alerts /deals /settings /whatsapp /stop /resume")
+    ctx.reply([
+      "Commandes disponibles :",
+      "/menu — menu principal",
+      "/newradar — créer un radar",
+      "/radars — voir et scanner tes radars",
+      "/alerts — dernières alertes",
+      "/deals — meilleures opportunités",
+      "/status — état du compte",
+      "/settings — ouvrir le dashboard",
+      "/stop — suspendre les alertes",
+      "/resume — réactiver les alertes"
+    ].join("\n"))
   );
   bot.command("whatsapp", async (ctx) => {
     const phone = ctx.message.text.replace(/^\/whatsapp(@\w+)?/i, "").trim();
@@ -281,13 +301,15 @@ export function createBot() {
     if(session?.state!=="wizard:condition") return replyExpiredWizardStep(ctx);
     const payload={...(session.payload??{}),condition:ctx.match[1].split(","),sourcesDraft:recommendedTelegramSources()};
     await setSession(telegramId,"wizard:source",payload); await safeAnswerCbQuery(ctx);
-    await ctx.reply("5/7 — Coche les sources à scanner.\n\nConseil bêta : garde le pack recommandé. Ricardo/Anibis sont en bêta car parfois bloqués.",{reply_markup:sourceSelectionKeyboard(payload.sourcesDraft)});
+    await ctx.reply("5/7 — Coche les sources à scanner.\n\nPack recommandé activé : eBay, Komehyo, Tutti, Email alerts.\nRicardo et Anibis sont disponibles en bêta, mais peuvent être instables.",{reply_markup:sourceSelectionKeyboard(payload.sourcesDraft)});
   });
   bot.action(/^wizsrcpreset:recommended$/,async(ctx)=>{
     const telegramId=String(ctx.from.id); const {data:session}=await serviceDb().from("telegram_sessions").select("*").eq("telegram_id",telegramId).maybeSingle();
     if(session?.state!=="wizard:source") return replyExpiredWizardStep(ctx);
     const payload={...(session.payload??{}),sourcesDraft:recommendedTelegramSources()};
     await setSession(telegramId,"wizard:source",payload);
+    const user = await userFor(ctx);
+    await logTelegramEvent("radar_sources_selected", user.id, { sources: payload.sourcesDraft });
     await safeAnswerCbQuery(ctx,"Pack recommandé sélectionné");
     await safeEditMessageReplyMarkup(ctx, sourceSelectionKeyboard(payload.sourcesDraft));
   });
@@ -301,6 +323,8 @@ export function createBot() {
     const sourcesDraft=[...current];
     const payload={...(session.payload??{}),sourcesDraft};
     await setSession(telegramId,"wizard:source",payload);
+    const user = await userFor(ctx);
+    await logTelegramEvent("radar_sources_selected", user.id, { sources: sourcesDraft });
     await safeAnswerCbQuery(ctx,sourcesDraft.includes(source) ? "Source ajoutée" : "Source retirée");
     await safeEditMessageReplyMarkup(ctx, sourceSelectionKeyboard(sourcesDraft));
   });
@@ -309,6 +333,8 @@ export function createBot() {
     if(session?.state!=="wizard:source") return replyExpiredWizardStep(ctx);
     const sources=(((session.payload?.sourcesDraft as string[] | undefined) ?? recommendedTelegramSources()).filter((value)=>ACTIVE_RADAR_SOURCES.includes(value)));
     if(!sources.length){await safeAnswerCbQuery(ctx,"Choisis au moins une source",{show_alert:true});return}
+    const user = await userFor(ctx);
+    await logTelegramEvent("radar_sources_selected", user.id, { sources });
     await setSession(telegramId,"wizard:margin",{...(session.payload??{}),sources}); await safeAnswerCbQuery(ctx,"Sources validées");
     await ctx.reply(`✅ Sources sélectionnées : ${sources.join(", ")}\n\n6/7 — Indique la marge nette minimum souhaitée en CHF.\nExemple : 50\n\nAstuce : mets 1 pour explorer très large, puis resserre ensuite.`);
   });
@@ -349,6 +375,10 @@ export function createBot() {
       return;
     }
     await clearSession(telegramId);
+    await logTelegramEvent("radar_created", user.id, {
+      radar_id: createdRadar.id,
+      sources: ((payload.sources as string[]) ?? [])
+    });
     await ctx.reply(`✅ Radar créé et activé\n\n📡 ${name}\n💰 Budget : ${payload.budget} CHF\n📈 Marge minimum : ${payload.margin} CHF\n🧭 Sources : ${((payload.sources as string[]) ?? []).join(", ")}\n⏱ Scan : toutes les ${payload.frequency/60} h`, {
       reply_markup: { inline_keyboard: [
         [{ text: "📡 Mes radars", callback_data: "list_radars" }],
@@ -378,19 +408,69 @@ export function createBot() {
 
   async function replyAlerts(ctx: any) {
     const user = await userFor(ctx);
-    const { data } = await serviceDb().from("alerts").select("id,status,sent_at").eq("user_id", user.id).order("created_at", { ascending: false }).limit(10);
-    await ctx.reply(data?.length ? data.map((a: any) => `• ${a.status} — ${a.sent_at ?? "en attente"}`).join("\n") : "Aucune alerte.");
+    const { data } = await serviceDb()
+      .from("alerts")
+      .select("id,status,created_at,products(title,source,price_amount,price_currency,product_url),deal_scores(total_score,estimated_net_profit)")
+      .eq("user_id", user.id)
+      .order("created_at", { ascending: false })
+      .limit(5);
+    if (!data?.length) {
+      await ctx.reply("Aucune alerte pour le moment. Crée un radar ou lance un scan manuel.", {
+        reply_markup: { inline_keyboard: [[{ text: "➕ Créer un radar", callback_data: "create_radar" }]] }
+      });
+      return;
+    }
+    await ctx.reply(`🚨 Dernières alertes\n\n${data.map((a: any, index: number) => {
+      const product = Array.isArray(a.products) ? a.products[0] : a.products;
+      const score = Array.isArray(a.deal_scores) ? a.deal_scores[0] : a.deal_scores;
+      return `${index + 1}. ${product?.title ?? "Annonce"}\n   ${product?.source ?? "source"} • ${product?.price_amount ?? "—"} ${product?.price_currency ?? ""} • score ${score?.total_score ?? "—"}/100\n   ${product?.product_url ?? "Lien indisponible"}`;
+    }).join("\n\n")}`, { disable_web_page_preview: true });
   }
   bot.command("alerts", replyAlerts);
   bot.action("list_alerts", async (ctx) => { await safeAnswerCbQuery(ctx); await replyAlerts(ctx); });
 
   async function replyDeals(ctx: any) {
     const user = await userFor(ctx);
-    const { data } = await serviceDb().from("deal_scores").select("total_score,recommendation,estimated_net_profit").eq("user_id", user.id).order("total_score", { ascending: false }).limit(10);
-    await ctx.reply(data?.length ? data.map((d: any) => `⭐ ${d.total_score} — ${d.recommendation} — +${d.estimated_net_profit} CHF`).join("\n") : "Aucun deal.");
+    const { data } = await serviceDb()
+      .from("deal_scores")
+      .select("total_score,recommendation,estimated_net_profit,estimated_roi_percent,products(title,source,price_amount,price_currency,product_url)")
+      .eq("user_id", user.id)
+      .order("total_score", { ascending: false })
+      .limit(5);
+    if (!data?.length) {
+      await ctx.reply("Aucun deal exploitable pour le moment. Lance un scan depuis « Mes radars ».", {
+        reply_markup: { inline_keyboard: [[{ text: "📡 Mes radars", callback_data: "list_radars" }]] }
+      });
+      return;
+    }
+    await ctx.reply(`⭐ Meilleurs deals\n\n${data.map((d: any, index: number) => {
+      const product = Array.isArray(d.products) ? d.products[0] : d.products;
+      return `${index + 1}. ${product?.title ?? "Annonce"}\n   ${product?.source ?? "source"} • score ${d.total_score}/100 • +${Math.round(Number(d.estimated_net_profit ?? 0))} CHF • ROI ${Number(d.estimated_roi_percent ?? 0).toFixed(1)}%\n   ${product?.product_url ?? "Lien indisponible"}`;
+    }).join("\n\n")}`, { disable_web_page_preview: true });
   }
   bot.command("deals", replyDeals);
   bot.action("list_deals", async (ctx) => { await safeAnswerCbQuery(ctx); await replyDeals(ctx); });
+  bot.command("status", async (ctx) => {
+    const user = await userFor(ctx);
+    const [{ count: activeRadars }, { count: alertsToday }] = await Promise.all([
+      serviceDb().from("radars").select("*", { count: "exact", head: true }).eq("user_id", user.id).eq("is_active", true),
+      serviceDb().from("alerts").select("*", { count: "exact", head: true }).eq("user_id", user.id).gte("created_at", new Date(Date.now() - 86_400_000).toISOString())
+    ]);
+    await ctx.reply([
+      "📊 Statut Deal Hunter",
+      "",
+      `Compte : ${user.status}`,
+      `Plan : ${user.plan}`,
+      `Alertes : ${user.alerts_enabled ? "activées" : "désactivées"}`,
+      `Radars actifs : ${activeRadars ?? 0}`,
+      `Alertes 24h : ${alertsToday ?? 0}`
+    ].join("\n"), {
+      reply_markup: { inline_keyboard: [
+        [{ text: "📡 Mes radars", callback_data: "list_radars" }],
+        [{ text: "🌐 Dashboard", url: dashboardLoginUrl(String(ctx.from.id)) }]
+      ] }
+    });
+  });
   bot.command("settings", (ctx) => ctx.reply(dashboardLoginUrl(String(ctx.from.id))));
   bot.command("stop", async (ctx) => {
     const user = await userFor(ctx);
@@ -458,6 +538,8 @@ export function createBot() {
     const rawAction = ctx.match[1];
     const alertId = ctx.match[2];
     if (!isTelegramDealAction(rawAction)) {
+      const user = await userFor(ctx);
+      await logTelegramEvent("telegram_callback_invalid", user.id, { action: rawAction });
       await safeAnswerCbQuery(ctx,"Action inconnue", { show_alert: true });
       return;
     }
@@ -471,6 +553,7 @@ export function createBot() {
         return;
       }
       if (action === "analysis") {
+        await logTelegramEvent("deal_full_analysis_requested", user.id, { alert_id: alertId });
         await replyWithFullAnalysis(ctx, alert);
         return;
       }
@@ -485,6 +568,7 @@ export function createBot() {
         if (saveError) throw saveError;
         await serviceDb().from("rejected_products").delete().eq("user_id", user.id).eq("product_id", alert.product_id);
         await updateAlertStatus(alertId, user.id, "saved");
+        await logTelegramEvent("deal_action_saved", user.id, { alert_id: alertId, product_id: alert.product_id });
         await safeAnswerCbQuery(ctx,"Sauvegardé");
         await ctx.reply("✅ Deal sauvegardé. Tu le retrouves dans le Dashboard > Opportunités.");
         return;
@@ -494,6 +578,7 @@ export function createBot() {
         if (rejectError) throw rejectError;
         await serviceDb().from("saved_deals").delete().eq("user_id", user.id).eq("product_id", alert.product_id);
         await updateAlertStatus(alertId, user.id, "rejected");
+        await logTelegramEvent("deal_action_rejected", user.id, { alert_id: alertId, product_id: alert.product_id });
         await safeAnswerCbQuery(ctx,"Rejeté");
         await ctx.reply("❌ Deal rejeté. Il sera évité dans les prochains scans.");
         return;
@@ -503,6 +588,7 @@ export function createBot() {
         if (saveError) throw saveError;
         await serviceDb().from("rejected_products").delete().eq("user_id", user.id).eq("product_id", alert.product_id);
         await updateAlertStatus(alertId, user.id, "negotiating");
+        await logTelegramEvent("deal_action_negotiation_requested", user.id, { alert_id: alertId, product_id: alert.product_id });
         await safeAnswerCbQuery(ctx,"Négociation préparée");
         await ctx.reply(negotiationReply(product, score));
         return;

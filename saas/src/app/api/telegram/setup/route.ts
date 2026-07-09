@@ -10,6 +10,7 @@ const TELEGRAM_COMMANDS = [
   { command: "newradar", description: "Créer un radar" },
   { command: "deals", description: "Voir mes opportunités" },
   { command: "alerts", description: "Voir mes alertes" },
+  { command: "status", description: "Voir l’état de mon compte" },
   { command: "settings", description: "Mes réglages" },
   { command: "whatsapp", description: "Lier mon numéro WhatsApp" },
   { command: "stop", description: "Suspendre les alertes" },
