@@ -7,13 +7,44 @@ import { createSessionToken } from "@/lib/security/session";
 import { categoryKeyboard, conditionKeyboard, frequencyKeyboard, parseBrands, positiveNumber, sourceKeyboard } from "@/telegram/radar-wizard";
 
 const ACTIVE_RADAR_SOURCES = ["ebay", "komehyo", "email-alerts", "rss"];
-const SCAN_RESULT_FORMAT_VERSION = "scan-v2";
+const SCAN_RESULT_FORMAT_VERSION = "scan-v3";
+
+const REJECTION_LABELS: Record<string, string> = {
+  price_above_max: "prix au-dessus du max",
+  landed_cost_above_budget: "coût livré au-dessus du budget",
+  missing_photos: "photos manquantes",
+  condition_not_accepted: "état non accepté",
+  brand_not_matched: "marque non trouvée",
+  model_not_matched: "modèle non trouvé",
+  keyword_not_matched: "mot-clé requis absent",
+  excluded_keyword: "mot-clé exclu",
+  country_not_accepted: "pays non accepté",
+  sale_type_not_accepted: "type de vente refusé",
+  score_too_low: "score trop bas",
+  profit_too_low: "profit trop bas",
+  negative_profit: "profit négatif",
+  roi_too_low: "ROI trop bas",
+  already_seen: "déjà vu",
+  rejected_by_user: "déjà rejeté",
+  daily_alert_limit_reached: "limite journalière atteinte",
+  currency_conversion_failed: "conversion CHF impossible"
+};
+
+function rejectionSummaryText(summary?: Record<string, number>) {
+  const entries = Object.entries(summary ?? {})
+    .filter(([, count]) => count > 0)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5);
+  if (!entries.length) return "";
+  return `\n\n🔍 Filtres bloquants principaux\n${entries.map(([reason, count]) => `• ${REJECTION_LABELS[reason] ?? reason} : ${count}`).join("\n")}`;
+}
 
 export function scanResultText(result: {
   candidatesFound: number;
   alertsSent: number;
   alertsCreated?: number;
   telegramSkipped?: number;
+  rejectionSummary?: Record<string, number>;
   skipped?: boolean;
   reason?: string;
 }) {
@@ -32,7 +63,7 @@ export function scanResultText(result: {
     : alertsCreated
       ? "Des opportunités existent, mais Telegram n’a pas pu les envoyer. Vérifie le bot, ton compte Telegram et les alertes du radar."
       : "Aucune annonce ne respecte encore tous les critères de ce radar.";
-  return `✅ Scan terminé\n\n🔎 ${result.candidatesFound} annonce(s) analysée(s)\n🚨 ${alertsCreated} opportunité(s) créée(s)\n📨 ${result.alertsSent} alerte(s) Telegram envoyée(s)${telegramSkipped ? `\n⚠️ ${telegramSkipped} alerte(s) non envoyée(s) côté Telegram` : ""}\n\n${conclusion}\n\n_${SCAN_RESULT_FORMAT_VERSION}_`;
+  return `✅ Scan terminé\n\n🔎 ${result.candidatesFound} annonce(s) analysée(s)\n🚨 ${alertsCreated} opportunité(s) créée(s)\n📨 ${result.alertsSent} alerte(s) Telegram envoyée(s)${telegramSkipped ? `\n⚠️ ${telegramSkipped} alerte(s) non envoyée(s) côté Telegram` : ""}\n\n${conclusion}${rejectionSummaryText(result.rejectionSummary)}\n\n_${SCAN_RESULT_FORMAT_VERSION}_`;
 }
 
 async function scanAndReply(ctx: any, radarId: string, userId: string) {
