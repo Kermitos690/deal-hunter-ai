@@ -5,6 +5,7 @@ import { runRadarScan } from "@/lib/scans/run-radar-scan";
 import { parseAuctionResponse } from "@/telegram/auction-response";
 import { createSessionToken } from "@/lib/security/session";
 import { formatFullDealAnalysis } from "@/telegram/full-analysis";
+import { looksLikeWhatsAppPhone, normalizeWhatsAppPhone } from "@/whatsapp/client";
 import { categoryKeyboard, categorySearchPrompt, conditionKeyboard, frequencyKeyboard, parseSearchIntent, positiveNumber, searchSuggestionAt, searchSuggestionKeyboard, sourceKeyboard } from "@/telegram/radar-wizard";
 
 const ACTIVE_RADAR_SOURCES = ["ebay", "ricardo", "anibis", "komehyo", "email-alerts", "rss"];
@@ -196,8 +197,28 @@ export function createBot() {
   });
   bot.command("id", (ctx) => ctx.reply(String(ctx.from.id)));
   bot.command("help", (ctx) =>
-    ctx.reply("/start /id /radars /newradar /alerts /deals /settings /stop /resume")
+    ctx.reply("/start /id /radars /newradar /alerts /deals /settings /whatsapp /stop /resume")
   );
+  bot.command("whatsapp", async (ctx) => {
+    const phone = ctx.message.text.replace(/^\/whatsapp(@\w+)?/i, "").trim();
+    if (!looksLikeWhatsAppPhone(phone)) {
+      await ctx.reply("Écris ton numéro au format international. Exemple : /whatsapp +41791234567");
+      return;
+    }
+    const user = await userFor(ctx);
+    const normalizedPhone = normalizeWhatsAppPhone(phone);
+    const { error } = await serviceDb().from("users").update({
+      whatsapp_phone: normalizedPhone,
+      whatsapp_alerts_enabled: true,
+      whatsapp_opt_in_at: new Date().toISOString()
+    }).eq("id", user.id);
+    if (error) {
+      console.error("Liaison WhatsApp impossible:", error.message);
+      await ctx.reply("❌ Impossible de lier WhatsApp. Vérifie que la migration Supabase WhatsApp est appliquée.");
+      return;
+    }
+    await ctx.reply(`✅ WhatsApp lié au +${normalizedPhone}.\n\nTu peux maintenant écrire au bot WhatsApp : aide, radars ou scan.`);
+  });
   bot.command("newradar", async (ctx) => {
     await startRadarWizard(ctx);
   });
