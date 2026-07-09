@@ -4,7 +4,7 @@ import { enforcePlanLimits } from "@/plans/limits";
 import { runRadarScan } from "@/lib/scans/run-radar-scan";
 import { parseAuctionResponse } from "@/telegram/auction-response";
 import { createSessionToken } from "@/lib/security/session";
-import { categoryKeyboard, categorySearchPrompt, conditionKeyboard, frequencyKeyboard, parseSearchIntent, positiveNumber, sourceKeyboard } from "@/telegram/radar-wizard";
+import { categoryKeyboard, categorySearchPrompt, conditionKeyboard, frequencyKeyboard, parseSearchIntent, positiveNumber, searchSuggestionAt, searchSuggestionKeyboard, sourceKeyboard } from "@/telegram/radar-wizard";
 
 const ACTIVE_RADAR_SOURCES = ["ebay", "ricardo", "anibis", "komehyo", "email-alerts", "rss"];
 const SCAN_RESULT_FORMAT_VERSION = "scan-v5";
@@ -120,6 +120,21 @@ async function clearSession(telegramId: string) {
   await serviceDb().from("telegram_sessions").delete().eq("telegram_id", telegramId);
 }
 
+function searchIntentLines(intent: ReturnType<typeof parseSearchIntent>) {
+  return [
+    intent.brands.length ? `Marques : ${intent.brands.join(", ")}` : null,
+    intent.models.length ? `Modèles : ${intent.models.join(", ")}` : null,
+    intent.includeKeywords.length ? `Mots-clés : ${intent.includeKeywords.join(", ")}` : null
+  ].filter(Boolean).join("\n");
+}
+
+async function acceptWizardSearch(ctx: any, telegramId: string, payload: Record<string, unknown>, query: string) {
+  const intent=parseSearchIntent(query, payload.category as string);
+  if(!intent.brands.length && !intent.models.length && !intent.includeKeywords.length){await ctx.reply("Indique au moins une marque, un modèle ou un mot-clé utile.");return}
+  await setSession(telegramId,"wizard:budget",{...payload,brands:intent.brands,models:intent.models,include_keywords:intent.includeKeywords,exclude_keywords:intent.excludeKeywords});
+  await ctx.reply(`✅ Recherche comprise\n${searchIntentLines(intent)}\n\n3/7 — Indique ton budget maximum en CHF.\nExemple : 1500`);
+}
+
 async function startRadarWizard(ctx:any) {
   await userFor(ctx);
   await setSession(String(ctx.from.id),"wizard:category",{});
@@ -175,7 +190,16 @@ export function createBot() {
     const {data:session}=await serviceDb().from("telegram_sessions").select("state").eq("telegram_id",telegramId).maybeSingle();
     if(session?.state!=="wizard:category") return ctx.answerCbQuery();
     await setSession(telegramId,"wizard:brand",{category}); await ctx.answerCbQuery();
-    await ctx.reply(categorySearchPrompt(category));
+    await ctx.reply(categorySearchPrompt(category), { reply_markup: searchSuggestionKeyboard(category) });
+  });
+  bot.action(/^wizsearch:(\d+)$/,async(ctx)=>{
+    const telegramId=String(ctx.from.id); const {data:session}=await serviceDb().from("telegram_sessions").select("*").eq("telegram_id",telegramId).maybeSingle();
+    if(session?.state!=="wizard:brand") return ctx.answerCbQuery();
+    const payload={...(session.payload??{})};
+    const suggestion=searchSuggestionAt(String(payload.category ?? ""), Number(ctx.match[1]));
+    if(!suggestion){await ctx.answerCbQuery("Suggestion indisponible");return}
+    await ctx.answerCbQuery(suggestion);
+    await acceptWizardSearch(ctx, telegramId, payload, suggestion);
   });
   bot.action(/^wizcond:(.+)$/,async(ctx)=>{
     const telegramId=String(ctx.from.id); const {data:session}=await serviceDb().from("telegram_sessions").select("*").eq("telegram_id",telegramId).maybeSingle();
@@ -292,15 +316,7 @@ export function createBot() {
     const current=session.state.split(":")[1];
     const payload={...(session.payload??{})};
     if(current==="brand"){
-      const intent=parseSearchIntent(ctx.message.text, payload.category as string);
-      if(!intent.brands.length && !intent.models.length && !intent.includeKeywords.length){await ctx.reply("Indique au moins une marque, un modèle ou un mot-clé utile.");return}
-      await setSession(telegramId,"wizard:budget",{...payload,brands:intent.brands,models:intent.models,include_keywords:intent.includeKeywords,exclude_keywords:intent.excludeKeywords});
-      const lines = [
-        intent.brands.length ? `Marques : ${intent.brands.join(", ")}` : null,
-        intent.models.length ? `Modèles : ${intent.models.join(", ")}` : null,
-        intent.includeKeywords.length ? `Mots-clés : ${intent.includeKeywords.join(", ")}` : null
-      ].filter(Boolean).join("\n");
-      await ctx.reply(`✅ Recherche comprise\n${lines}\n\n3/7 — Indique ton budget maximum en CHF.\nExemple : 1500`); return;
+      await acceptWizardSearch(ctx, telegramId, payload, ctx.message.text); return;
     }
     if(current==="budget"){
       const budget=positiveNumber(ctx.message.text); if(!budget){await ctx.reply("Budget invalide. Écris uniquement un montant positif, par exemple 1500.");return}
