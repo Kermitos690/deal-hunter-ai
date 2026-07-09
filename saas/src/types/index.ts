@@ -127,7 +127,7 @@ export interface DealScore {
   decisionStatus?: "APPROVED" | "CONDITIONAL" | "REVIEW_REQUIRED" | "REJECTED";
   decisionRationale?: string;
   recommendation: Recommendation;
-  scoringVersion: "v2" | "v3";
+  scoringVersion: "v2" | "v3" | "v4";
   marketConfidence: MarketConfidence;
   comparableCount: number;
   reasons: string[];

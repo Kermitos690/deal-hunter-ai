@@ -7,6 +7,7 @@ describe("scanResultText", () => {
     const text = scanResultText({ candidatesFound: 816, alertsCreated: 9, alertsSent: 9 });
     expect(text).toContain("816 annonce(s)");
     expect(text).toContain("9 opportunité(s) créée(s)");
+    expect(text).toContain("Taux de sélection");
     expect(text).toContain("9 alerte(s) Telegram envoyée(s)");
   });
 

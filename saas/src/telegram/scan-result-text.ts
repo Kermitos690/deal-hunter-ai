@@ -49,10 +49,13 @@ export function scanResultText(result: {
   }
   const alertsCreated = result.alertsCreated ?? result.alertsSent;
   const telegramSkipped = result.telegramSkipped ?? Math.max(0, alertsCreated - result.alertsSent);
+  const selectedRate = result.candidatesFound > 0
+    ? ((alertsCreated / result.candidatesFound) * 100).toFixed(1)
+    : "0.0";
   const conclusion = result.alertsSent
     ? "Les meilleures opportunités sont affichées ci-dessus."
     : alertsCreated
       ? "Des opportunités existent, mais Telegram n’a pas pu les envoyer. Vérifie le bot, ton compte Telegram et les alertes du radar."
       : "Aucune annonce ne respecte encore tous les critères de ce radar.";
-  return `✅ Scan terminé\n\n🔎 ${result.candidatesFound} annonce(s) analysée(s)\n🚨 ${alertsCreated} opportunité(s) créée(s)\n📨 ${result.alertsSent} alerte(s) Telegram envoyée(s)${telegramSkipped ? `\n⚠️ ${telegramSkipped} alerte(s) non envoyée(s) côté Telegram` : ""}\n\n${conclusion}${rejectionSummaryText(result.rejectionSummary)}\n\n_${SCAN_RESULT_FORMAT_VERSION}_`;
+  return `✅ Scan terminé\n\n🔎 ${result.candidatesFound} annonce(s) analysée(s)\n🚨 ${alertsCreated} opportunité(s) créée(s)\n🎯 Taux de sélection : ${selectedRate} %\n📨 ${result.alertsSent} alerte(s) Telegram envoyée(s)${telegramSkipped ? `\n⚠️ ${telegramSkipped} alerte(s) non envoyée(s) côté Telegram` : ""}\n\n${conclusion}${rejectionSummaryText(result.rejectionSummary)}\n\n_${SCAN_RESULT_FORMAT_VERSION}_`;
 }
