@@ -3,8 +3,8 @@ import { parseBrands,positiveNumber } from "@/telegram/radar-wizard";
 
 describe("Telegram radar wizard",()=>{
   it("reconnaît plusieurs marques sans virgules",()=>{
-    expect(parseBrands("Prada Louis Vuitton FENDI Gucci Hermes")).toEqual(["Louis Vuitton","Prada","Fendi","Gucci","Hermès"]);
-    expect(parseBrands("Omega TAG Heuer Rolex Tissot")).toEqual(["TAG Heuer","Rolex","Tissot","Omega"]);
+    expect(parseBrands("Prada Louis Vuitton FENDI Gucci Hermes")).toEqual(["Prada","Louis Vuitton","Fendi","Gucci","Hermès"]);
+    expect(parseBrands("Omega TAG Heuer Rolex Tissot")).toEqual(["Omega","TAG Heuer","Rolex","Tissot"]);
   });
   it("conserve une marque inconnue et accepte les montants suisses",()=>{
     expect(parseBrands("Marque artisanale")).toEqual(["Marque artisanale"]);

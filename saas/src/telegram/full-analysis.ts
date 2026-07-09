@@ -15,6 +15,21 @@ const list = (values: unknown, fallback: string) => {
   return items.length ? items.map((item) => `• ${item}`).join("\n") : `• ${fallback}`;
 };
 
+const scoreLine = (label: string, value: unknown, explanation: string) => {
+  const number = typeof value === "number" ? value : Number(value ?? 0);
+  const shown = Number.isFinite(number) ? Math.round(number) : 0;
+  return `• ${label} : ${shown}/100 — ${explanation}`;
+};
+
+const conditionExplanation = (value: unknown) => {
+  const number = typeof value === "number" ? value : Number(value ?? 0);
+  if (number >= 90) return "neuf ou quasi neuf";
+  if (number >= 80) return "excellent état";
+  if (number >= 65) return "bon état revendable";
+  if (number >= 45) return "état usagé, prudence sur la revente";
+  return "réparation ou état incertain";
+};
+
 export function formatFullDealAnalysis(product: Row, score: Row, comparables: Row[] = []) {
   const comparableLines = comparables.length
     ? comparables.slice(0, 5).map((item) => {
@@ -49,12 +64,12 @@ Chiffres
 • Seuil sans perte : ${money(score.break_even_resale_price)}
 
 Score
-• Total : ${score.total_score ?? 0}/100
-• Marge : ${score.margin_score ?? 0}/100
-• Liquidité : ${score.liquidity_score ?? 0}/100
-• Risque : ${score.risk_score ?? 0}/100
-• État : ${score.condition_score ?? 0}/100
-• Urgence : ${score.urgency_score ?? 0}/100
+${scoreLine("Total", score.total_score, "synthèse marge + liquidité + risque + état")}
+${scoreLine("Marge", score.margin_score, "qualité économique du deal")}
+${scoreLine("Liquidité", score.liquidity_score, "facilité estimée de revente")}
+${scoreLine("Risque", score.risk_score, "plus haut = moins risqué")}
+${scoreLine("État", score.condition_score, conditionExplanation(score.condition_score))}
+${scoreLine("Urgence", score.urgency_score, "pression temporelle de l’annonce")}
 • Confiance marché : ${score.market_confidence ?? "LOW"} (${score.comparable_count ?? 0} comparables)
 
 Plan d’action

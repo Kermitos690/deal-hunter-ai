@@ -12,7 +12,7 @@ describe("calculateDealScore", () => {
     expect(result.totalScore).toBeLessThanOrEqual(100);
     expect(result.estimatedNetProfit).toBeGreaterThan(0);
     expect(["BUY","NEGOTIATE","WATCH","AVOID"]).toContain(result.recommendation);
-    expect(result.scoringVersion).toBe("v2");
+    expect(result.scoringVersion).toBe("v3");
   });
   it("ne recommande pas un achat avec une confiance faible", () => {
     const result = calculateDealScore(mockCandidates[0], radar, {
