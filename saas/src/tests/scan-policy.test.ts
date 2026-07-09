@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { shouldFallbackToEbay } from "@/lib/scans/run-radar-scan";
 import { lockIsExpired, SCAN_LOCK_TTL_SECONDS, userCanRunActivity } from "@/lib/scans/scan-policy";
 
 describe("scan policy", () => {
@@ -14,5 +15,19 @@ describe("scan policy", () => {
     expect(lockIsExpired("2026-07-04T12:00:01Z", now)).toBe(false);
     expect(lockIsExpired("date-invalide", now)).toBe(true);
     expect(SCAN_LOCK_TTL_SECONDS).toBe(900);
+  });
+
+  it("déclenche le fallback eBay si toutes les sources live choisies échouent", () => {
+    expect(shouldFallbackToEbay(["ricardo", "tutti"], [
+      { candidates: [], error: "HTTP 403" },
+      { candidates: [], error: "HTTP 403" }
+    ])).toBe(true);
+    expect(shouldFallbackToEbay(["ebay", "ricardo"], [
+      { candidates: [], error: "HTTP 403" }
+    ])).toBe(false);
+    expect(shouldFallbackToEbay(["ricardo", "tutti"], [
+      { candidates: [{} as any], error: null },
+      { candidates: [], error: "HTTP 403" }
+    ])).toBe(false);
   });
 });

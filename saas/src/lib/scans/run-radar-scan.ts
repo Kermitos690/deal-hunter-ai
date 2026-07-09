@@ -17,9 +17,42 @@ type RadarScanOptions = {
   sourceNames?: string[];
   updateRadarSchedule?: boolean;
 };
+type SourceScanResult = {
+  source: string;
+  candidates: ProductCandidate[];
+  error: string | null;
+  startedAt: Date;
+  finishedAt: Date;
+};
 
 function countRejections(summary: RejectionSummary, reasons: string[]) {
   for (const reason of reasons) summary[reason] = (summary[reason] ?? 0) + 1;
+}
+
+export function shouldFallbackToEbay(requestedSources: string[], sourceResults: Pick<SourceScanResult, "candidates" | "error">[]) {
+  return !requestedSources.includes("ebay")
+    && sourceResults.length > 0
+    && sourceResults.every((result) => result.error && result.candidates.length === 0);
+}
+
+async function scanAdapters(radar: Radar, sourceNames: string[]) {
+  const enabledAdapters = adaptersFor(sourceNames);
+  const results: SourceScanResult[] = await Promise.all(enabledAdapters.map(async (adapter) => {
+    const startedAt = new Date();
+    try {
+      const candidates = await adapter.scan(radar);
+      return { source: adapter.name, candidates, error: null, startedAt, finishedAt: new Date() };
+    } catch (error) {
+      return {
+        source: adapter.name,
+        candidates: [] as ProductCandidate[],
+        error: error instanceof Error ? error.message : "Erreur source",
+        startedAt,
+        finishedAt: new Date()
+      };
+    }
+  }));
+  return { enabledAdapters, results };
 }
 
 function comparableListings(candidate: ProductCandidate, candidates: ProductCandidate[]) {
@@ -135,7 +168,7 @@ export async function runRadarScan(radarId: string, ownerId?: string, options: R
   const rejectionSummary: RejectionSummary = {};
   try {
     const requestedSources = options.sourceNames ?? radar.sources;
-    const enabledAdapters = adaptersFor(requestedSources);
+    const { enabledAdapters, results: initialSourceResults } = await scanAdapters(radar, requestedSources);
     if (!enabledAdapters.length) {
       const now = new Date().toISOString();
       await db.from("scan_logs").update({
@@ -145,21 +178,15 @@ export async function runRadarScan(radarId: string, ownerId?: string, options: R
       }).eq("id", log.id);
       return { candidatesFound: 0, alertsCreated: 0, alertsSent: 0, telegramSkipped: 0, rejectionSummary, skipped: true, reason: "no_enabled_source" };
     }
-    const sourceResults = await Promise.all(enabledAdapters.map(async (adapter) => {
-      const startedAt = new Date();
-      try {
-        const candidates = await adapter.scan(radar);
-        return { source: adapter.name, candidates, error: null, startedAt, finishedAt: new Date() };
-      } catch (error) {
-        return {
-          source: adapter.name,
-          candidates: [] as ProductCandidate[],
-          error: error instanceof Error ? error.message : "Erreur source",
-          startedAt,
-          finishedAt: new Date()
-        };
-      }
-    }));
+    let sourceResults = initialSourceResults;
+    if (shouldFallbackToEbay(requestedSources, sourceResults)) {
+      console.warn("Toutes les sources demandées ont échoué, fallback eBay automatique.");
+      const fallback = await scanAdapters(radar, ["ebay"]);
+      sourceResults = [...sourceResults, ...fallback.results.map((result) => ({
+        ...result,
+        source: result.source === "ebay" ? "ebay_fallback" : result.source
+      }))];
+    }
     await db.from("source_scan_logs").insert(sourceResults.map((result) => ({
       scan_log_id: log.id,
       radar_id: radar.id,
