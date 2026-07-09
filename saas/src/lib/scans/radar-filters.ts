@@ -10,6 +10,10 @@ function textFor(candidate: ProductCandidate) {
   ].filter(Boolean).join(" "));
 }
 
+function acceptedCountries(radar: Radar) {
+  return radar.source_countries.map((value) => value.toUpperCase());
+}
+
 export function estimatedLandedCost(candidate: ProductCandidate, radar: Radar) {
   const subtotal = candidate.priceAmount +
     (candidate.shippingCost ?? radar.shipping_cost) +
@@ -18,30 +22,53 @@ export function estimatedLandedCost(candidate: ProductCandidate, radar: Radar) {
   return subtotal + subtotal * radar.vat_rate;
 }
 
-export function candidateMatchesRadar(candidate: ProductCandidate, radar: Radar) {
-  if (candidate.priceAmount > radar.max_buy_price) return false;
-  if (radar.total_budget && estimatedLandedCost(candidate, radar) > radar.total_budget) return false;
-  if (radar.photos_required && candidate.imageUrls.length === 0) return false;
-  if (!radar.accepted_conditions.includes(candidate.conditionGrade ?? "UNKNOWN")) return false;
+export function radarDiscoveryMode(radar: Radar) {
+  return radar.min_profit <= 1;
+}
+
+export function effectiveMinScore(radar: Radar) {
+  return radarDiscoveryMode(radar) ? 0 : radar.min_score;
+}
+
+export function effectiveMinRoiPercent(radar: Radar) {
+  return radarDiscoveryMode(radar) ? 0 : radar.min_roi_percent;
+}
+
+export function candidateMismatchReasons(candidate: ProductCandidate, radar: Radar) {
+  const reasons: string[] = [];
+  if (candidate.priceAmount > radar.max_buy_price) reasons.push("price_above_max");
+  if (radar.total_budget && estimatedLandedCost(candidate, radar) > radar.total_budget) reasons.push("landed_cost_above_budget");
+  if (radar.photos_required && candidate.imageUrls.length === 0) reasons.push("missing_photos");
+  if (!radar.accepted_conditions.includes(candidate.conditionGrade ?? "UNKNOWN")) reasons.push("condition_not_accepted");
 
   const text = textFor(candidate);
-  if (radar.brands.length && !radar.brands.some((value) => text.includes(normalized(value)))) return false;
-  if (radar.models.length && !radar.models.some((value) => text.includes(normalized(value)))) return false;
-  if (radar.include_keywords.length && !radar.include_keywords.some((value) => text.includes(normalized(value)))) return false;
-  if (radar.exclude_keywords.some((value) => text.includes(normalized(value)))) return false;
+  if (radar.brands.length && !radar.brands.some((value) => text.includes(normalized(value)))) reasons.push("brand_not_matched");
+  if (radar.models.length && !radar.models.some((value) => text.includes(normalized(value)))) reasons.push("model_not_matched");
+  if (radar.include_keywords.length && !radar.include_keywords.some((value) => text.includes(normalized(value)))) reasons.push("keyword_not_matched");
+  if (radar.exclude_keywords.some((value) => text.includes(normalized(value)))) reasons.push("excluded_keyword");
 
   const country = candidate.itemCountry?.toUpperCase();
   if (country && radar.source_countries.length) {
-    const accepted = radar.source_countries.map((value) => value.toUpperCase());
-    if (!accepted.includes(country) && !(accepted.includes("EU") && EU.has(country))) return false;
+    const accepted = acceptedCountries(radar);
+    if (!accepted.includes(country) && !(accepted.includes("EU") && EU.has(country))) reasons.push("country_not_accepted");
   }
-  if (candidate.saleType && radar.sale_types.length && !radar.sale_types.includes(candidate.saleType)) return false;
-  return true;
+  if (candidate.saleType && radar.sale_types.length && !radar.sale_types.includes(candidate.saleType)) reasons.push("sale_type_not_accepted");
+  return reasons;
+}
+
+export function candidateMatchesRadar(candidate: ProductCandidate, radar: Radar) {
+  return candidateMismatchReasons(candidate, radar).length === 0;
+}
+
+export function scoreMismatchReasons(score: DealScore, radar: Radar) {
+  const reasons: string[] = [];
+  if (score.totalScore < effectiveMinScore(radar)) reasons.push("score_too_low");
+  if (score.estimatedNetProfit < Math.max(0, radar.min_profit)) reasons.push("profit_too_low");
+  if (score.estimatedNetProfit < 0) reasons.push("negative_profit");
+  if (score.estimatedRoiPercent < effectiveMinRoiPercent(radar)) reasons.push("roi_too_low");
+  return reasons;
 }
 
 export function scoreMatchesRadar(score: DealScore, radar: Radar) {
-  return score.totalScore >= radar.min_score &&
-    score.estimatedNetProfit >= Math.max(0, radar.min_profit) &&
-    score.estimatedNetProfit >= 0 &&
-    score.estimatedRoiPercent >= radar.min_roi_percent;
+  return scoreMismatchReasons(score, radar).length === 0;
 }
