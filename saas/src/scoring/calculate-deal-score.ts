@@ -6,6 +6,26 @@ import { professionalDecision } from "./decision-framework";
 const conditionScores = { NEW: 95, A: 88, B: 72, C: 48, REPAIR: 30, UNKNOWN: 35 };
 const clamp = (value: number) => Math.max(0, Math.min(100, Math.round(value)));
 
+function evidenceSummary(market: MarketEstimate) {
+  const sold = market.comparableDetails.filter((item) => item.evidenceType === "SOLD").length;
+  const active = market.comparableDetails.filter((item) => item.evidenceType === "ACTIVE_LISTING").length;
+  const signals = market.comparableDetails.filter((item) => item.evidenceType === "MARKET_SIGNAL").length;
+  if (!market.comparableCount) return "Preuve D : aucun comparable exploitable.";
+  return `Preuve ${market.confidence} : ${sold} vente(s) conclue(s), ${active} annonce(s) active(s), ${signals} signal(aux) marché.`;
+}
+
+function costFormula(
+  candidate: ProductCandidate,
+  radar: Radar,
+  shipping: number,
+  estimatedBuyCost: number,
+  saleFees: number
+) {
+  const vatPercent = (radar.vat_rate * 100).toFixed(1);
+  const feePercent = ((radar.platform_fee_rate + radar.payment_fee_rate) * 100).toFixed(1);
+  return `Calcul : achat ${candidate.priceAmount.toFixed(0)} + livraison ${shipping.toFixed(0)} + douane ${radar.customs_cost.toFixed(0)} + réparation ${radar.repair_cost.toFixed(0)} + TVA ${vatPercent}% = coût livré ${estimatedBuyCost.toFixed(0)} CHF ; frais de revente ${feePercent}% ≈ ${saleFees.toFixed(0)} CHF.`;
+}
+
 export function calculateDealScore(
   candidate: ProductCandidate,
   radar: Radar,
@@ -58,8 +78,14 @@ export function calculateDealScore(
           ? "WATCH"
           : "AVOID";
   const actionPlan = buildDealActionPlan(candidate, radar, market.median, market.confidence);
+  const respectsOfferDiscipline = candidate.priceAmount <= actionPlan.maximumOffer;
+  const finalRecommendation = !respectsOfferDiscipline && recommendation === "BUY"
+    ? "NEGOTIATE"
+    : !respectsOfferDiscipline && recommendation === "NEGOTIATE"
+      ? "WATCH"
+      : recommendation;
   const decision = professionalDecision({
-    recommendation,
+    recommendation: finalRecommendation,
     confidence: market.confidence,
     comparableCount: market.comparableCount,
     riskScore,
@@ -74,9 +100,18 @@ export function calculateDealScore(
       ? "Estimation soutenue par des comparables."
       : market.comparableCount >= 8
         ? "Estimation basée sur plusieurs signaux actifs, à confirmer par ventes conclues."
-        : "Estimation de marché prudente."
+        : "Estimation de marché prudente.",
+    evidenceSummary(market),
+    costFormula(candidate, radar, shipping, estimatedBuyCost, saleFees)
   ];
   if (conditionScore >= 70) reasons.push("État compatible avec une revente standard.");
+  if (!respectsOfferDiscipline) {
+    warnings.push(`Prix actuel supérieur à l’offre maximum calculée (${actionPlan.maximumOffer.toFixed(0)} CHF). Négociation obligatoire.`);
+  }
+  if (market.confidence === "LOW") {
+    warnings.push("Confiance marché faible : ne pas traiter comme un achat automatique.");
+  }
+  warnings.push(...market.notes.slice(0, 3));
 
   return {
     totalScore,
@@ -97,8 +132,8 @@ export function calculateDealScore(
     evidenceGrade: decision.evidenceGrade,
     decisionStatus: decision.decisionStatus,
     decisionRationale: decision.decisionRationale,
-    recommendation,
-    scoringVersion: "v3",
+    recommendation: finalRecommendation,
+    scoringVersion: "v4",
     marketConfidence: market.confidence,
     comparableCount: market.comparableCount,
     reasons,

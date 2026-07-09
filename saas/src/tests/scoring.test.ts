@@ -12,7 +12,9 @@ describe("calculateDealScore", () => {
     expect(result.totalScore).toBeLessThanOrEqual(100);
     expect(result.estimatedNetProfit).toBeGreaterThan(0);
     expect(["BUY","NEGOTIATE","WATCH","AVOID"]).toContain(result.recommendation);
-    expect(result.scoringVersion).toBe("v3");
+    expect(result.scoringVersion).toBe("v4");
+    expect(result.reasons.join(" ")).toContain("Calcul : achat");
+    expect(result.reasons.join(" ")).toContain("Preuve");
   });
   it("ne recommande pas un achat avec une confiance faible", () => {
     const result = calculateDealScore(mockCandidates[0], radar, {
@@ -21,5 +23,6 @@ describe("calculateDealScore", () => {
     });
     expect(result.totalScore).toBeLessThan(55);
     expect(["WATCH","AVOID"]).toContain(result.recommendation);
+    expect(result.warnings.join(" ")).toContain("Confiance marché faible");
   });
 });
