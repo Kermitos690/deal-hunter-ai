@@ -1,4 +1,5 @@
-import type { ProductCandidate, SourceAdapter } from "@/types";
+import { isWatchCategory, looksLikeCompleteWatchTitle, searchTermAlternatives } from "@/lib/search-precision";
+import type { ProductCandidate, Radar, SourceAdapter } from "@/types";
 
 const DEFAULT_EBAY_PRIORITY_SOURCE_URLS = [
   "https://ebay.io/m/bSMD1F",
@@ -24,16 +25,24 @@ function listFromEnv(value?: string) {
   return (value ?? "").split(",").map((entry) => entry.trim()).filter(Boolean);
 }
 
+function unique(values: string[]) {
+  const seen = new Set<string>();
+  return values.map((value) => value.trim()).filter((value) => {
+    const key = searchable(value);
+    if (!value || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 export function inferRadarBrand(title: string, brands: string[]) {
   const normalizedTitle = searchable(title);
   return brands.find((brand) => normalizedTitle.includes(searchable(brand)));
 }
 
-export function isRelevantEbayListing(title: string, category: string) {
-  const normalizedCategory = searchable(category);
-  if (!/(montre|watch|uhr)/.test(normalizedCategory)) return true;
-  const value = searchable(title);
-  return !/(bracelet|watch band|watch strap|cadran|dial only|boite vide|empty box|manual only|bezel only|movement only)/.test(value);
+export function isRelevantEbayListing(title: string, category: string, expectedTerms: string[] = []) {
+  if (!isWatchCategory(category)) return true;
+  return looksLikeCompleteWatchTitle(title, expectedTerms);
 }
 
 export function ebayConditionGrade(condition?: string) {
@@ -99,6 +108,43 @@ export function ebaySearchUrl(query: string, options: boolean | EbaySearchOption
   return `https://api.ebay.com/buy/browse/v1/item_summary/search?${params.toString()}`;
 }
 
+function keywordCombinations(keywords: string[], limit = 12) {
+  if (!keywords.length) return [[]] as string[][];
+  let combinations: string[][] = [[]];
+  for (const keyword of keywords) {
+    const alternatives = searchTermAlternatives(keyword).slice(0, 4);
+    const next: string[][] = [];
+    for (const combination of combinations) {
+      for (const alternative of alternatives.length ? alternatives : [keyword]) {
+        next.push([...combination, alternative]);
+        if (next.length >= limit) break;
+      }
+      if (next.length >= limit) break;
+    }
+    combinations = next;
+    if (combinations.length >= limit) combinations = combinations.slice(0, limit);
+  }
+  return combinations;
+}
+
+export function ebaySearchQueries(radar: Pick<Radar, "brands" | "models" | "include_keywords" | "category">) {
+  const brands = radar.brands.length ? radar.brands : [""];
+  const models = radar.models.length ? radar.models : [""];
+  const categoryHint = isWatchCategory(radar.category) ? "watch" : radar.category;
+  const keywordVariants = keywordCombinations(radar.include_keywords);
+  const queries: string[] = [];
+
+  for (const brand of brands) {
+    for (const model of models) {
+      for (const keywords of keywordVariants) {
+        queries.push([brand, model, ...keywords, categoryHint].filter(Boolean).join(" "));
+        if (queries.length >= 16) return unique(queries);
+      }
+    }
+  }
+  return unique(queries);
+}
+
 function priorityMarketplaces(marketplaces: string[]) {
   const configured = (process.env.EBAY_PRIORITY_MARKETPLACES ?? "")
     .split(",").map((value) => value.trim()).filter(Boolean);
@@ -124,9 +170,7 @@ export const ebayAdapter: SourceAdapter = {
   async scan(radar) {
     if (!this.enabled) return [];
     const token = await accessToken();
-    const searches = radar.brands.length
-      ? radar.brands.map((brand) => [brand, ...radar.models, ...radar.include_keywords, radar.category].filter(Boolean).join(" "))
-      : [[...radar.models, ...radar.include_keywords, radar.category].filter(Boolean).join(" ")];
+    const searches = ebaySearchQueries(radar);
     const marketplaces = (process.env.EBAY_MARKETPLACES ?? "EBAY_CH,EBAY_FR,EBAY_DE,EBAY_IT,EBAY_GB,EBAY_US")
       .split(",").map((value) => value.trim()).filter(Boolean);
     const prioritySellers = ebayPrioritySellers();
@@ -140,6 +184,7 @@ export const ebayAdapter: SourceAdapter = {
         : []),
       ...searches.flatMap((query) => marketplaces.map((marketplace) => ({ query, marketplace, priority: false, sellers: [] })))
     ];
+    const expectedTerms = [...radar.brands, ...radar.models, ...radar.include_keywords];
     const resultGroups = await Promise.all(searchPlan.map(async ({ query, marketplace, priority, sellers }) => {
       const response = await fetch(
         ebaySearchUrl(query, { priority, sellers }),
@@ -157,7 +202,7 @@ export const ebayAdapter: SourceAdapter = {
       }
       const body = await response.json();
       return (body.itemSummaries ?? [])
-      .filter((item: Record<string, any>) => isRelevantEbayListing(String(item.title), radar.category))
+      .filter((item: Record<string, any>) => isRelevantEbayListing(String(item.title), radar.category, expectedTerms))
       .filter((item: Record<string, any>) => !priority || !sellers.length || isPriorityJapanCandidate(item))
       .map(
       (item: Record<string, any>): ProductCandidate => ({
@@ -188,7 +233,8 @@ export const ebayAdapter: SourceAdapter = {
           internalPrioritySellers: sellers,
           internalPrioritySourceUrls: priority ? prioritySourceUrls : undefined,
           internalPriorityDeliveryCountry: process.env.EBAY_DELIVERY_COUNTRY ?? "CH",
-          internalPriorityAuthenticityOriented: priority && isAuthenticityOrientedEbayTitle(String(item.title ?? ""))
+          internalPriorityAuthenticityOriented: priority && isAuthenticityOrientedEbayTitle(String(item.title ?? "")),
+          internalSearchQuery: query
         }
       })
     );
