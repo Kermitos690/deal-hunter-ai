@@ -93,10 +93,15 @@ const CATALOGUE_TERMS = [
 ];
 
 const HARD_ACCESSORY_TERMS = [
-  "watch strap", "watch band", "strap", "band", "bracelet", "buckle", "clasp", "link",
+  "watch strap", "watch band", "strap", "band", "bracelet", "buckle", "clasp",
   "dial", "cadran", "bezel", "lunette", "movement", "mouvement", "caliber", "calibre",
   "watch case", "boitier", "crown", "couronne", "hands", "aiguilles", "crystal", "verre",
   "spring bar", "end link"
+];
+
+const ACCESSORY_PRODUCT_PHRASES = [
+  "watch strap", "watch band", "replacement strap", "replacement bracelet", "spare strap", "spare bracelet",
+  "strap for", "bracelet for", "band for", "fits rolex", "fits omega", "fits tag heuer"
 ];
 
 const SOFT_ACCESSORY_TERMS = [
@@ -138,17 +143,19 @@ export function looksLikeCompleteWatchTitle(title: string, expectedTerms: string
   const value = normalize(title);
   if (!value || containsAny(value, CATALOGUE_TERMS)) return false;
 
+  const accessoryProduct = containsAny(value, ACCESSORY_PRODUCT_PHRASES);
   const hardAccessory = containsAny(value, HARD_ACCESSORY_TERMS);
   const softAccessory = containsAny(value, SOFT_ACCESSORY_TERMS);
   const exclusiveAccessory = containsAny(value, EXCLUSIVE_ACCESSORY_TERMS);
   const explicitWatch = containsAny(value, WATCH_PRODUCT_TERMS);
 
+  if (accessoryProduct) return false;
   if ((hardAccessory || softAccessory) && exclusiveAccessory) return false;
-  if (hardAccessory && !explicitWatch) return false;
 
   const modelSignal = containsAny(value, WATCH_MODEL_TERMS);
   const functionSignal = containsAny(value, WATCH_FUNCTION_TERMS);
   const expectedSignal = expectedTerms.length > 0 && matchesAnySearchTerm(title, expectedTerms);
+  if (hardAccessory && !explicitWatch && !functionSignal) return false;
 
   return explicitWatch || modelSignal || functionSignal || (expectedSignal && hasWatchReference(value));
 }
