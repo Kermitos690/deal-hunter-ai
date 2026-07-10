@@ -41,11 +41,13 @@ for (const group of ALIAS_GROUPS) {
   for (const alias of group.aliases) ALIAS_TO_GROUP.set(normalize(alias), group);
 }
 
+const EMBEDDED_SUFFIX_TERMS = new Set(["blro", "blnr", "chnr", "vtnr"]);
+
 function containsPhrase(normalizedText: string, rawPhrase: string) {
   const phrase = normalize(rawPhrase);
   if (!phrase) return false;
   if (` ${normalizedText} `.includes(` ${phrase} `)) return true;
-  if (/^[a-z]{3,5}$/.test(phrase)) {
+  if (EMBEDDED_SUFFIX_TERMS.has(phrase)) {
     return new RegExp(`\\b[a-z0-9]*${phrase}\\b`).test(normalizedText);
   }
   return false;
@@ -88,13 +90,13 @@ export function isWatchCategory(category: string) {
 }
 
 const CATALOGUE_TERMS = [
-  "catalog", "catalogue", "brochure", "book", "magazine", "manual", "instruction manual",
+  "catalog", "catalogue", "brochure", "book", "magazine", "instruction manual", "user manual",
   "poster", "advert", "advertising", "press kit", "price list", "dealer display"
 ];
 
 const HARD_ACCESSORY_TERMS = [
   "watch strap", "watch band", "strap", "band", "bracelet", "buckle", "clasp",
-  "dial", "cadran", "bezel", "lunette", "movement", "mouvement", "caliber", "calibre",
+  "dial", "cadran", "bezel", "lunette", "movement", "mouvement",
   "watch case", "boitier", "crown", "couronne", "hands", "aiguilles", "crystal", "verre",
   "spring bar", "end link"
 ];
