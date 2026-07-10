@@ -1,3 +1,4 @@
+import { isWatchCategory, looksLikeCompleteWatchTitle, matchesAllSearchTerms, matchesAnySearchTerm } from "@/lib/search-precision";
 import type { DealScore, ProductCandidate, Radar } from "@/types";
 
 const EU = new Set(["AT","BE","BG","HR","CY","CZ","DE","DK","EE","ES","FI","FR","GR","HU","IE","IT","LT","LU","LV","MT","NL","PL","PT","RO","SE","SI","SK"]);
@@ -42,10 +43,13 @@ export function candidateMismatchReasons(candidate: ProductCandidate, radar: Rad
   if (!radar.accepted_conditions.includes(candidate.conditionGrade ?? "UNKNOWN")) reasons.push("condition_not_accepted");
 
   const text = textFor(candidate);
-  if (radar.brands.length && !radar.brands.some((value) => text.includes(normalized(value)))) reasons.push("brand_not_matched");
-  if (radar.models.length && !radar.models.some((value) => text.includes(normalized(value)))) reasons.push("model_not_matched");
-  if (radar.include_keywords.length && !radar.include_keywords.some((value) => text.includes(normalized(value)))) reasons.push("keyword_not_matched");
-  if (radar.exclude_keywords.some((value) => text.includes(normalized(value)))) reasons.push("excluded_keyword");
+  if (isWatchCategory(radar.category) && !looksLikeCompleteWatchTitle(candidate.title, [...radar.brands, ...radar.models])) {
+    reasons.push("not_complete_watch");
+  }
+  if (radar.brands.length && !matchesAnySearchTerm(text, radar.brands)) reasons.push("brand_not_matched");
+  if (radar.models.length && !matchesAnySearchTerm(text, radar.models)) reasons.push("model_not_matched");
+  if (radar.include_keywords.length && !matchesAllSearchTerms(text, radar.include_keywords)) reasons.push("keyword_not_matched");
+  if (radar.exclude_keywords.length && matchesAnySearchTerm(text, radar.exclude_keywords)) reasons.push("excluded_keyword");
 
   const country = candidate.itemCountry?.toUpperCase();
   if (country && radar.source_countries.length) {

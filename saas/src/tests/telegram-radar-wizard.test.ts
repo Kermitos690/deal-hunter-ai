@@ -1,10 +1,22 @@
 import { describe,expect,it } from "vitest";
-import { parseBrands, positiveNumber, recommendedTelegramSources, sourceSelectionKeyboard } from "@/telegram/radar-wizard";
+import { parseBrands, parseSearchIntent, positiveNumber, recommendedTelegramSources, sourceSelectionKeyboard } from "@/telegram/radar-wizard";
 
 describe("Telegram radar wizard",()=>{
   it("reconnaît plusieurs marques sans virgules",()=>{
     expect(parseBrands("Prada Louis Vuitton FENDI Gucci Hermes")).toEqual(["Prada","Louis Vuitton","Fendi","Gucci","Hermès"]);
     expect(parseBrands("Omega TAG Heuer Rolex Tissot")).toEqual(["Omega","TAG Heuer","Rolex","Tissot"]);
+  });
+  it("structure précisément une recherche Rolex libre",()=>{
+    expect(parseSearchIntent("Je cherche une Rolex Daytona 116500LN", "Montres")).toEqual(expect.objectContaining({
+      brands: ["Rolex"],
+      models: ["Daytona"],
+      includeKeywords: ["116500LN"]
+    }));
+    expect(parseSearchIntent("Rolex GMT Master 2 Coca-Cola ou Cola ou Pepsi", "Montres")).toEqual(expect.objectContaining({
+      brands: ["Rolex"],
+      models: ["GMT-Master II"],
+      includeKeywords: ["Pepsi|Coke"]
+    }));
   });
   it("conserve une marque inconnue et accepte les montants suisses",()=>{
     expect(parseBrands("Marque artisanale")).toEqual(["Marque artisanale"]);
