@@ -1,3 +1,5 @@
+import { canonicalSearchTerm, matchesSearchTerm, searchTermAlternatives } from "@/lib/search-precision";
+
 type CategoryProfile = {
   label: string;
   examples: string[];
@@ -18,12 +20,35 @@ export type SearchIntent = {
 const CATEGORY_PROFILES: Record<string, CategoryProfile> = {
   "montres": {
     label: "Montres",
-    examples: ["Omega Seamaster quartz", "TAG Heuer Professional", "Cartier Must Tank", "Longines DolceVita", "Seiko vintage", "Rolex Oyster Datejust"],
-    brands: ["Omega", "TAG Heuer", "Rolex", "Tissot", "Longines", "Cartier", "Breitling", "Tudor", "Seiko", "Citizen", "Orient", "Rado", "Ebel", "Hamilton", "IWC", "Jaeger-LeCoultre"],
-    models: ["Seamaster", "Speedmaster", "De Ville", "Constellation", "Professional", "Formula 1", "Link", "Carrera", "Tank", "Santos", "Must", "DolceVita", "HydroConquest", "Datejust", "Oyster", "T-Touch"],
-    keywords: ["quartz", "automatique", "vintage", "full set", "boîte", "papiers", "pile", "révision", "fonctionne", "acier", "or", "chronographe"],
-    excludeKeywords: ["fake", "replica", "inspired", "homage", "bracelet seul", "boîte seule", "cadran seul", "parts only"],
-    aliases: { "tag heuer": "TAG Heuer", "tagheur": "TAG Heuer", "tagueur": "TAG Heuer", "tag": "TAG Heuer", "omega": "Omega", "oméga": "Omega", "rolex": "Rolex", "olex": "Rolex", "rolllex": "Rolex", "tissot": "Tissot", "tudor": "Tudor", "cartié": "Cartier", "cartier": "Cartier", "longine": "Longines", "longines": "Longines" }
+    examples: ["Rolex GMT-Master II Pepsi", "Rolex Daytona 116500LN", "Omega Seamaster quartz", "Cartier Must Tank", "Tudor Black Bay", "Seiko vintage"],
+    brands: [
+      "Omega", "TAG Heuer", "Rolex", "Tissot", "Longines", "Cartier", "Breitling", "Tudor", "Seiko",
+      "Citizen", "Orient", "Rado", "Ebel", "Hamilton", "IWC", "Jaeger-LeCoultre", "Audemars Piguet",
+      "Patek Philippe", "Vacheron Constantin", "Panerai", "Hublot", "Zenith", "Grand Seiko", "Blancpain", "Breguet"
+    ],
+    models: [
+      "Daytona", "Submariner", "GMT-Master", "GMT-Master II", "Datejust", "Oyster Perpetual", "Explorer",
+      "Explorer II", "Yacht-Master", "Sea-Dweller", "Sky-Dweller", "Day-Date", "Air-King", "Cellini",
+      "Seamaster", "Speedmaster", "De Ville", "Constellation", "Professional", "Formula 1", "Link", "Carrera",
+      "Monaco", "Aquaracer", "Tank", "Santos", "Must", "DolceVita", "HydroConquest", "T-Touch", "Royal Oak",
+      "Nautilus", "Aquanaut", "Black Bay", "Pelagos", "Navitimer", "Superocean", "Chronomat", "Eco-Drive", "Promaster"
+    ],
+    keywords: [
+      "Pepsi", "Coke", "Batman", "Batgirl", "Root Beer", "Sprite", "Hulk", "Kermit", "Starbucks",
+      "quartz", "automatique", "vintage", "full set", "boîte", "papiers", "révision", "fonctionne",
+      "acier", "or", "chronographe"
+    ],
+    excludeKeywords: [
+      "fake", "replica", "inspired", "homage", "bracelet seul", "boîte seule", "cadran seul", "parts only",
+      "catalogue", "brochure", "manual only", "movement only", "bezel only"
+    ],
+    aliases: {
+      "tag heuer": "TAG Heuer", "tagheur": "TAG Heuer", "tagueur": "TAG Heuer", "tag": "TAG Heuer",
+      "omega": "Omega", "oméga": "Omega", "rolex": "Rolex", "olex": "Rolex", "rolllex": "Rolex",
+      "tissot": "Tissot", "tudor": "Tudor", "cartié": "Cartier", "cartier": "Cartier",
+      "longine": "Longines", "longines": "Longines", "ap": "Audemars Piguet", "audemars": "Audemars Piguet",
+      "patek": "Patek Philippe", "jlc": "Jaeger-LeCoultre", "grand seiko": "Grand Seiko"
+    }
   },
   "sacs et accessoires": {
     label: "Sacs et accessoires",
@@ -79,6 +104,12 @@ const ALL_BRAND_ALIASES = Object.values(CATEGORY_PROFILES).flatMap((profile) => 
   ...profile.brands.map((brand) => [normalized(brand), brand] as const),
   ...Object.entries(profile.aliases).map(([alias, brand]) => [normalized(alias), brand] as const)
 ]);
+const FREE_TEXT_STOPWORDS = new Set([
+  "je", "cherche", "recherche", "veux", "voudrais", "trouve", "trouver", "uniquement", "seulement",
+  "montre", "montres", "watch", "watches", "modele", "model", "avec", "sans", "pour", "une", "un",
+  "des", "de", "du", "la", "le", "les", "et", "ou", "or", "the", "only", "with", "for", "in", "en",
+  "sur", "pas", "trop", "cher", "chere", "prix", "occasion", "annonce", "annonces"
+]);
 
 function profileFor(category?: string) {
   const key = normalized(category ?? "");
@@ -103,6 +134,29 @@ function brandsFromAllCategories(value: string) {
     .map(({ brand }) => brand === "Hermes" ? "Hermès" : brand));
 }
 
+function removeDetectedTerms(value: string, terms: string[]) {
+  let residue = ` ${normalized(value)} `;
+  const alternatives = unique(terms.flatMap(searchTermAlternatives))
+    .map(normalized)
+    .filter(Boolean)
+    .sort((a, b) => b.length - a.length);
+  for (const alternative of alternatives) {
+    residue = residue.replace(new RegExp(`(^| )${escapeRegex(alternative)}(?= |$)`, "g"), " ");
+  }
+  return residue.replace(/\s+/g, " ").trim();
+}
+
+function residualKeywords(value: string, detectedTerms: string[]) {
+  const references = value.match(/\b(?:[A-Za-z]{0,5}\d[A-Za-z0-9.-]{3,}|[A-Za-z]{2,5}\d{2,})\b/g) ?? [];
+  const residue = removeDetectedTerms(value, [...detectedTerms, ...references]);
+  const tokens = residue
+    .split(/[^a-z0-9]+/)
+    .map((token) => token.trim())
+    .filter((token) => token.length > 1)
+    .filter((token) => !FREE_TEXT_STOPWORDS.has(token));
+  return unique([...references, ...tokens].map(canonicalSearchTerm));
+}
+
 export function searchSuggestionsFor(category: string) {
   return profileFor(category).examples.slice(0, 6);
 }
@@ -124,8 +178,8 @@ export function categorySearchPrompt(category: string) {
   return [
     `2/7 — Affine ton radar ${profile.label}`,
     "",
-    "Choisis une proposition ou écris librement les marques, modèles, références et mots-clés.",
-    "Je corrige les fautes courantes dans le contexte de la catégorie.",
+    "Choisis une proposition ou écris librement marque, modèle, référence et surnom.",
+    "Chaque critère demandé sera vérifié dans l’annonce. Les accessoires seuls seront écartés.",
     "",
     "Tu peux écrire par exemple :",
     ...profile.examples.slice(0, 3).map((example) => `• ${example}`)
@@ -144,15 +198,21 @@ export function parseSearchIntent(value:string, category?: string): SearchIntent
   const brands = unique([...brandAliases.entries()]
     .filter(([alias]) => includesTerm(haystack, alias))
     .map(([, brand]) => brand));
-  const models = unique(profile.models.filter((model) => includesTerm(haystack, model)));
-  const profileKeywords = profile.keywords.filter((keyword) => includesTerm(haystack, keyword));
-  const typedChunks = clean
-    .split(/[,;\n]+/)
-    .map((chunk) => chunk.trim())
-    .filter((chunk) => chunk.length > 1)
-    .filter((chunk) => !brands.some((brand) => includesTerm(normalized(chunk), brand)))
-    .filter((chunk) => !models.some((model) => includesTerm(normalized(chunk), model)));
-  const includeKeywords = unique([...profileKeywords, ...typedChunks].slice(0, 12));
+  const detectedModels = unique(profile.models.filter((model) => matchesSearchTerm(clean, model)));
+  const models = detectedModels.filter((model) => !detectedModels.some((other) =>
+    other !== model && normalized(other).length > normalized(model).length && normalized(other).includes(normalized(model))
+  ));
+  const detectedKeywords = unique(profile.keywords
+    .map(canonicalSearchTerm)
+    .filter((keyword) => matchesSearchTerm(clean, keyword)));
+  const hasAlternativeConnector = /\b(?:ou|or)\b|[|/]/i.test(clean);
+  const aliasKeywords = detectedKeywords.filter((keyword) => searchTermAlternatives(keyword).length > 1);
+  const strictKeywords = detectedKeywords.filter((keyword) => !aliasKeywords.includes(keyword));
+  const keywordGroups = hasAlternativeConnector && aliasKeywords.length > 1
+    ? [...strictKeywords, aliasKeywords.join("|")]
+    : detectedKeywords;
+  const typedKeywords = residualKeywords(clean, [...brands, ...models, ...detectedKeywords]);
+  const includeKeywords = unique([...keywordGroups, ...typedKeywords].slice(0, 12));
   return { brands, models, includeKeywords, excludeKeywords: profile.excludeKeywords };
 }
 
