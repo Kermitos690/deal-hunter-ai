@@ -17,4 +17,10 @@ describe("telegram menu", () => {
     expect(serialized).toContain("list_deals");
     expect(serialized).toContain("https://deal-hunter-ai.vercel.app/dashboard");
   });
+
+  it("supporte les langues principales du bot", () => {
+    expect(mainMenuText("Keyan", "en")).toContain("Account : Keyan");
+    expect(JSON.stringify(mainMenuKeyboard("https://deal-hunter-ai.vercel.app/dashboard", "de"))).toContain("Radar erstellen");
+    expect(JSON.stringify(mainMenuKeyboard("https://deal-hunter-ai.vercel.app/dashboard", "it"))).toContain("Crea radar");
+  });
 });

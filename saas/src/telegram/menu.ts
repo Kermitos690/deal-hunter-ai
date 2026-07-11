@@ -1,19 +1,21 @@
-export function mainMenuText(displayName: string) {
+import { t, type TelegramLanguage } from "@/telegram/i18n";
+
+export function mainMenuText(displayName: string, lang: TelegramLanguage = "fr") {
   return [
     "Menu Deal Hunter AI",
     "",
-    `Compte : ${displayName}`,
-    "Choisis une action."
+    `${t(lang, "account")} : ${displayName}`,
+    t(lang, "chooseAction")
   ].join("\n");
 }
 
-export function mainMenuKeyboard(dashboardUrl: string) {
+export function mainMenuKeyboard(dashboardUrl: string, lang: TelegramLanguage = "fr") {
   return {
     inline_keyboard: [
-      [{ text: "➕ Créer un radar", callback_data: "create_radar" }],
-      [{ text: "📡 Mes radars", callback_data: "list_radars" }],
-      [{ text: "🚨 Dernières alertes", callback_data: "list_alerts" }, { text: "⭐ Deals", callback_data: "list_deals" }],
-      [{ text: "🌐 Dashboard", url: dashboardUrl }]
+      [{ text: t(lang, "createRadar"), callback_data: "create_radar" }],
+      [{ text: t(lang, "myRadars"), callback_data: "list_radars" }],
+      [{ text: t(lang, "latestAlerts"), callback_data: "list_alerts" }, { text: t(lang, "deals"), callback_data: "list_deals" }],
+      [{ text: t(lang, "dashboard"), url: dashboardUrl }, { text: t(lang, "language"), callback_data: "language" }]
     ]
   };
 }

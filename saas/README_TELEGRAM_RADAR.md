@@ -17,9 +17,23 @@ Il ne gère pas de marketplace vendeur, boutique vendeur, Wallet Pay, PayPal man
 - `/deals` : afficher les meilleures opportunités.
 - `/status` : afficher l'état du compte.
 - `/settings` : ouvrir le dashboard avec un lien signé.
+- `/language` : choisir la langue du bot.
 - `/stop` : suspendre les alertes.
 - `/resume` : réactiver les alertes.
 - `/help` : afficher l'aide.
+
+## Langues
+
+Le bot supporte une base multilingue pour les points d'entrée Telegram :
+
+- français ;
+- anglais ;
+- allemand ;
+- italien.
+
+La langue peut être choisie avec `/language`. La préférence est stockée dans `users.preferred_language`.
+
+Le français reste le fallback. Les textes métier profonds comme les analyses complètes, le scoring détaillé et certaines pages dashboard doivent être traduits progressivement dans la phase V2 Premium pour éviter une régression massive.
 
 ## Flow création radar
 

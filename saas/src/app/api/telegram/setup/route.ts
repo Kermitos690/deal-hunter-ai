@@ -12,6 +12,7 @@ const TELEGRAM_COMMANDS = [
   { command: "alerts", description: "Voir mes alertes" },
   { command: "status", description: "Voir l’état de mon compte" },
   { command: "settings", description: "Mes réglages" },
+  { command: "language", description: "Choisir la langue" },
   { command: "whatsapp", description: "Lier mon numéro WhatsApp" },
   { command: "stop", description: "Suspendre les alertes" },
   { command: "resume", description: "Réactiver les alertes" },

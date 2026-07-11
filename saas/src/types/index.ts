@@ -11,6 +11,7 @@ export interface AppUser {
   role: "user" | "admin";
   plan: Plan;
   status: "active" | "suspended";
+  preferred_language?: "fr" | "en" | "de" | "it";
   alerts_enabled: boolean;
   whatsapp_phone?: string | null;
   whatsapp_alerts_enabled?: boolean;

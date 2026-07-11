@@ -12,6 +12,7 @@ import { categoryKeyboard, categorySearchPrompt, conditionKeyboard, frequencyKey
 import { mainMenuKeyboard, mainMenuText } from "@/telegram/menu";
 import { logTelegramEvent } from "@/telegram/observability";
 import { dealReviewKeyboard } from "@/telegram/send-alert";
+import { languageKeyboard, normalizeTelegramLanguage, t, type TelegramLanguage } from "@/telegram/i18n";
 
 const ACTIVE_RADAR_SOURCES = ["ebay", "ricardo", "anibis", "tutti", "komehyo", "email-alerts", "rss"];
 export { scanResultText } from "@/telegram/scan-result-text";
@@ -89,6 +90,18 @@ async function userFor(ctx: any) {
     .single();
   if (error) throw error;
   return data;
+}
+
+function userLanguage(ctx: any, user?: any): TelegramLanguage {
+  return normalizeTelegramLanguage(user?.preferred_language ?? ctx.from?.language_code);
+}
+
+async function setPreferredLanguage(telegramId: string, lang: TelegramLanguage) {
+  const { error } = await serviceDb()
+    .from("users")
+    .update({ preferred_language: lang })
+    .eq("telegram_id", telegramId);
+  if (error) throw error;
 }
 
 async function setSession(telegramId: string, state: string, payload: Record<string, unknown> = {}) {
@@ -238,8 +251,9 @@ async function startRadarWizard(ctx:any) {
 
 async function replyMainMenu(ctx: any) {
   const user = await userFor(ctx);
+  const lang = userLanguage(ctx, user);
   await logTelegramEvent("telegram_menu_opened", user.id);
-  await ctx.reply(mainMenuText(user.display_name), { reply_markup: mainMenuKeyboard(dashboardLoginUrl(String(ctx.from.id))) });
+  await ctx.reply(mainMenuText(user.display_name, lang), { reply_markup: mainMenuKeyboard(dashboardLoginUrl(String(ctx.from.id)), lang) });
 }
 
 async function replyExpiredWizardStep(ctx: any) {
@@ -302,21 +316,46 @@ export function createBot() {
   });
   bot.command("id", (ctx) => ctx.reply(String(ctx.from.id)));
   bot.command("menu", replyMainMenu);
-  bot.command("help", (ctx) =>
-    ctx.reply([
-      "Commandes disponibles :",
-      "/menu — menu principal",
-      "/newradar — créer un radar",
-      "/radars — voir et scanner tes radars",
-      "/inbox — trier les opportunités par catégories",
-      "/alerts — dernières alertes",
-      "/deals — meilleures opportunités",
-      "/status — état du compte",
-      "/settings — ouvrir le dashboard",
-      "/stop — suspendre les alertes",
-      "/resume — réactiver les alertes"
-    ].join("\n"))
-  );
+  bot.command("help", async (ctx) => {
+    const user = await userFor(ctx);
+    const lang = userLanguage(ctx, user);
+    await ctx.reply([
+      t(lang, "helpTitle"),
+      t(lang, "helpMenu"),
+      t(lang, "helpNewRadar"),
+      t(lang, "helpRadars"),
+      t(lang, "helpInbox"),
+      t(lang, "helpAlerts"),
+      t(lang, "helpDeals"),
+      t(lang, "helpStatus"),
+      t(lang, "helpSettings"),
+      t(lang, "helpLanguage"),
+      t(lang, "helpStop"),
+      t(lang, "helpResume")
+    ].join("\n"));
+  });
+  bot.command("language", async (ctx) => {
+    const user = await userFor(ctx);
+    await ctx.reply(t(userLanguage(ctx, user), "languagePrompt"), { reply_markup: languageKeyboard() });
+  });
+  bot.action("language", async (ctx) => {
+    await safeAnswerCbQuery(ctx);
+    const user = await userFor(ctx);
+    await ctx.reply(t(userLanguage(ctx, user), "languagePrompt"), { reply_markup: languageKeyboard() });
+  });
+  bot.action(/^lang:(fr|en|de|it)$/, async (ctx) => {
+    const lang = ctx.match[1] as TelegramLanguage;
+    try {
+      await setPreferredLanguage(String(ctx.from.id), lang);
+      await safeAnswerCbQuery(ctx, t(lang, "languageSaved"));
+      await ctx.reply(t(lang, "languageSaved"));
+      await replyMainMenu(ctx);
+    } catch (error) {
+      console.error("Langue Telegram non enregistrée:", error instanceof Error ? error.message : "Erreur inconnue");
+      await safeAnswerCbQuery(ctx);
+      await ctx.reply(t(lang, "languageUnavailable"));
+    }
+  });
   bot.command("whatsapp", async (ctx) => {
     const phone = ctx.message.text.replace(/^\/whatsapp(@\w+)?/i, "").trim();
     if (!looksLikeWhatsAppPhone(phone)) {
