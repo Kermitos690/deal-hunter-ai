@@ -31,4 +31,15 @@ describe("Telegram radar wizard",()=>{
     expect(JSON.stringify(keyboard)).toContain("⬜ 🇨🇭 Ricardo bêta");
     expect(JSON.stringify(keyboard)).toContain("wizsrcdone");
   });
+  it("affine les mots écrits à la main sans exiger de virgules",()=>{
+    const watch = parseSearchIntent("Omega Seamaster 136.005 révisée full set cuir", "Montres");
+    expect(watch.brands).toContain("Omega");
+    expect(watch.models).toContain("Seamaster");
+    expect(watch.includeKeywords).toEqual(expect.arrayContaining(["136.005", "révision", "full set", "cuir"]));
+
+    const sneaker = parseSearchIntent("Nike SB Dunk taille 42 OG box worn once", "Sneakers");
+    expect(sneaker.brands).toContain("Nike");
+    expect(sneaker.models).toEqual(["SB Dunk"]);
+    expect(sneaker.includeKeywords).toEqual(expect.arrayContaining(["42", "OG box", "worn once"]));
+  });
 });

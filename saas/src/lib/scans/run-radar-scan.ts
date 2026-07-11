@@ -3,7 +3,7 @@ import { adaptersFor } from "@/sources";
 import { normalizeUrl, productFingerprint } from "@/lib/dedupe";
 import { estimateMarketValue } from "@/market/market-estimator";
 import { calculateDealScore } from "@/scoring/calculate-deal-score";
-import { sendDealAlert } from "@/telegram/send-alert";
+import { sendDealAlert, sendScanDigest } from "@/telegram/send-alert";
 import { sendWhatsAppText } from "@/whatsapp/client";
 import { PLAN_LIMITS } from "@/plans/limits";
 import { candidateInChf } from "@/lib/fx";
@@ -111,6 +111,56 @@ function whatsappDealText(candidate: ProductCandidate, score: ReturnType<typeof 
   ].join("\n");
 }
 
+function telegramDeliveryMode() {
+  const value = process.env.TELEGRAM_ALERT_DELIVERY_MODE?.trim().toLowerCase();
+  return value === "individual" ? "individual" : "digest";
+}
+
+function immediateTelegramAlertLimit() {
+  const value = Number(process.env.TELEGRAM_MAX_IMMEDIATE_ALERTS_PER_SCAN ?? 0);
+  return Number.isFinite(value) ? Math.max(0, Math.min(10, value)) : 0;
+}
+
+function titleKey(value: string) {
+  return value.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+}
+
+function sameRejectedSignature(product: any, rejectedProduct: any) {
+  if (!rejectedProduct) return false;
+  if (product.normalized_url && rejectedProduct.normalized_url && product.normalized_url === rejectedProduct.normalized_url) return true;
+  if (product.content_fingerprint && rejectedProduct.content_fingerprint && product.content_fingerprint === rejectedProduct.content_fingerprint) return true;
+  const sameSeller = product.seller_name && rejectedProduct.seller_name && titleKey(product.seller_name) === titleKey(rejectedProduct.seller_name);
+  const samePrice = Math.abs(Number(product.price_amount ?? 0) - Number(rejectedProduct.price_amount ?? 0)) < 1;
+  const sameTitle = titleKey(product.title ?? "") === titleKey(rejectedProduct.title ?? "");
+  return Boolean(sameSeller && samePrice && sameTitle);
+}
+
+async function userHasRejectedDuplicate(userId: string, product: any) {
+  const { data } = await serviceDb()
+    .from("rejected_products")
+    .select("product_id,products(id,normalized_url,content_fingerprint,title,seller_name,price_amount)")
+    .eq("user_id", userId)
+    .order("created_at", { ascending: false })
+    .limit(300);
+  return (data ?? []).some((row: any) => {
+    const rejected = Array.isArray(row.products) ? row.products[0] : row.products;
+    return sameRejectedSignature(product, rejected);
+  });
+}
+
+async function userHasSeenDuplicate(userId: string, product: any) {
+  const { data } = await serviceDb()
+    .from("user_seen_products")
+    .select("product_id,products(id,normalized_url,content_fingerprint,title,seller_name,price_amount)")
+    .eq("user_id", userId)
+    .order("first_seen_at", { ascending: false })
+    .limit(500);
+  return (data ?? []).some((row: any) => {
+    const seen = Array.isArray(row.products) ? row.products[0] : row.products;
+    return sameRejectedSignature(product, seen);
+  });
+}
+
 export async function runRadarScan(radarId: string, ownerId?: string, options: RadarScanOptions = {}) {
   const db = serviceDb();
   let query = db.from("radars").select("*, users(*)").eq("id", radarId);
@@ -171,7 +221,9 @@ export async function runRadarScan(radarId: string, ownerId?: string, options: R
   let alertsCreated = 0;
   let alertsSent = 0;
   let telegramSkipped = 0;
+  let digestSent = false;
   const rejectionSummary: RejectionSummary = {};
+  let createdAlertsForDigest = 0;
   try {
     const requestedSources = options.sourceNames ?? radar.sources;
     const { enabledAdapters, results: initialSourceResults } = await scanAdapters(radar, requestedSources);
@@ -342,11 +394,15 @@ export async function runRadarScan(radarId: string, ownerId?: string, options: R
         db.from("user_seen_products").select("id").eq("user_id", user.id).eq("product_id", product.id).maybeSingle(),
         db.from("rejected_products").select("id").eq("user_id", user.id).eq("product_id", product.id).maybeSingle()
       ]);
-      if (seen) {
+      const [seenDuplicate, rejectedDuplicate] = await Promise.all([
+        seen ? Promise.resolve(false) : userHasSeenDuplicate(user.id, product),
+        rejected ? Promise.resolve(false) : userHasRejectedDuplicate(user.id, product)
+      ]);
+      if (seen || seenDuplicate) {
         countRejections(rejectionSummary, ["already_seen"]);
         continue;
       }
-      if (rejected) {
+      if (rejected || rejectedDuplicate) {
         countRejections(rejectionSummary, ["rejected_by_user"]);
         continue;
       }
@@ -446,6 +502,7 @@ export async function runRadarScan(radarId: string, ownerId?: string, options: R
 
       alertsCreated += 1;
       remaining -= 1;
+      createdAlertsForDigest += 1;
 
       let alertStatus = "created";
       let telegramMessageId: string | null = null;
@@ -464,6 +521,8 @@ export async function runRadarScan(radarId: string, ownerId?: string, options: R
       } else if (!radar.alerts_enabled) {
         alertStatus = "radar_alerts_disabled";
         telegramSkipped += 1;
+      } else if (telegramDeliveryMode() === "digest" && alertsCreated > immediateTelegramAlertLimit()) {
+        alertStatus = "inbox";
       } else {
         const { data: liveUser } = await db.from("users").select("status").eq("id", user.id).maybeSingle();
         if (!userCanRunActivity(liveUser?.status)) {
@@ -524,6 +583,33 @@ export async function runRadarScan(radarId: string, ownerId?: string, options: R
       if (stopAfterCurrentAlert) break;
     }
 
+    if (
+      telegramDeliveryMode() === "digest" &&
+      createdAlertsForDigest > 0 &&
+      user.telegram_id &&
+      user.alerts_enabled &&
+      radar.alerts_enabled &&
+      userCanRunActivity(user.status)
+    ) {
+      try {
+        const digest = await sendScanDigest(user.telegram_id, radar, {
+          candidatesFound,
+          alertsCreated,
+          alertsSent,
+          telegramSkipped
+        });
+        if (digest.skipped) {
+          telegramSkipped += 1;
+        } else {
+          alertsSent += 1;
+          digestSent = true;
+        }
+      } catch (digestError) {
+        telegramSkipped += 1;
+        console.error("Échec envoi digest Telegram:", digestError instanceof Error ? digestError.message : "Erreur inconnue");
+      }
+    }
+
     const now = new Date();
     const next = new Date(now.getTime() + radar.scan_frequency_minutes * 60_000);
     await Promise.all([
@@ -535,10 +621,10 @@ export async function runRadarScan(radarId: string, ownerId?: string, options: R
         finished_at: now.toISOString(),
         candidates_found: candidatesFound,
         alerts_sent: alertsSent,
-        error_message: Object.keys(rejectionSummary).length ? JSON.stringify({ rejectionSummary }) : null
+        error_message: Object.keys(rejectionSummary).length ? JSON.stringify({ rejectionSummary, digestSent }) : null
       }).eq("id", log.id)
     ]);
-    return { candidatesFound, alertsCreated, alertsSent, telegramSkipped, rejectionSummary, sourceErrors };
+    return { candidatesFound, alertsCreated, alertsSent, telegramSkipped, rejectionSummary, sourceErrors, digestSent };
   } catch (scanError) {
     await db.from("scan_logs").update({
       status: "error",

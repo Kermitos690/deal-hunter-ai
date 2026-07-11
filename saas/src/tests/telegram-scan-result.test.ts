@@ -58,6 +58,6 @@ describe("parseSearchIntent", () => {
 
     const intent = parseSearchIntent("Nike SB Dunk", "Sneakers");
     expect(intent.brands).toContain("Nike");
-    expect(intent.models).toEqual(expect.arrayContaining(["Dunk", "SB Dunk"]));
+    expect(intent.models).toEqual(["SB Dunk"]);
   });
 });

@@ -11,6 +11,7 @@ import { looksLikeWhatsAppPhone, normalizeWhatsAppPhone } from "@/whatsapp/clien
 import { categoryKeyboard, categorySearchPrompt, conditionKeyboard, frequencyKeyboard, parseSearchIntent, positiveNumber, recommendedTelegramSources, searchSuggestionAt, searchSuggestionKeyboard, sourceSelectionKeyboard, TELEGRAM_SOURCE_OPTIONS } from "@/telegram/radar-wizard";
 import { mainMenuKeyboard, mainMenuText } from "@/telegram/menu";
 import { logTelegramEvent } from "@/telegram/observability";
+import { dealReviewKeyboard } from "@/telegram/send-alert";
 
 const ACTIVE_RADAR_SOURCES = ["ebay", "ricardo", "anibis", "tutti", "komehyo", "email-alerts", "rss"];
 export { scanResultText } from "@/telegram/scan-result-text";
@@ -148,6 +149,30 @@ function money(value: unknown) {
   return Number.isFinite(amount) ? `${Math.round(amount)} CHF` : "—";
 }
 
+function compactDealText(alert: any) {
+  const product = Array.isArray(alert.products) ? alert.products[0] : alert.products;
+  const score = Array.isArray(alert.deal_scores) ? alert.deal_scores[0] : alert.deal_scores;
+  return [
+    "⚡ Deal à trier",
+    "",
+    `📦 ${product?.title ?? "Annonce"}`,
+    `🌍 ${product?.source ?? "source"} · ${money(product?.price_amount)}`,
+    `⭐ Score : ${score?.total_score ?? "—"}/100`,
+    `🟢 Marge : ${money(score?.estimated_net_profit)}`,
+    score?.estimated_roi_percent != null ? `📊 ROI : ${Number(score.estimated_roi_percent).toFixed(1)} %` : null,
+    "",
+    "Swipe Telegram : ❌ jeter, ❤️ garder, ➡️ deal suivant."
+  ].filter(Boolean).join("\n");
+}
+
+async function replyDealCard(ctx: any, alert: any) {
+  const product = Array.isArray(alert.products) ? alert.products[0] : alert.products;
+  await ctx.reply(compactDealText(alert), {
+    disable_web_page_preview: true,
+    reply_markup: dealReviewKeyboard(alert.id, product?.product_url ?? "https://t.me", Boolean(product?.auction_end_at))
+  });
+}
+
 function negotiationReply(product: any, score: any) {
   return `📉 Négociation préparée
 
@@ -244,6 +269,7 @@ export function createBot() {
       "/menu — menu principal",
       "/newradar — créer un radar",
       "/radars — voir et scanner tes radars",
+      "/inbox — trier les opportunités par catégories",
       "/alerts — dernières alertes",
       "/deals — meilleures opportunités",
       "/status — état du compte",
@@ -405,6 +431,95 @@ export function createBot() {
   }
   bot.command("radars", listRadars);
   bot.action("list_radars", async (ctx) => { await safeAnswerCbQuery(ctx); await listRadars(ctx); });
+
+  async function replyInbox(ctx: any, mode: "home" | "top" | "review" | "saved" | "rejected" = "home") {
+    const user = await userFor(ctx);
+    if (mode === "home") {
+      const [{ count: review }, { count: saved }, { count: rejected }] = await Promise.all([
+        serviceDb().from("alerts").select("*", { count: "exact", head: true }).eq("user_id", user.id).in("status", ["created", "inbox", "sent"]),
+        serviceDb().from("alerts").select("*", { count: "exact", head: true }).eq("user_id", user.id).eq("status", "saved"),
+        serviceDb().from("alerts").select("*", { count: "exact", head: true }).eq("user_id", user.id).eq("status", "rejected")
+      ]);
+      await ctx.reply([
+        "📥 Inbox Deal Hunter",
+        "",
+        `⚡ À trier : ${review ?? 0}`,
+        `❤️ Gardés : ${saved ?? 0}`,
+        `❌ Rejetés : ${rejected ?? 0}`,
+        "",
+        "Traite les deals comme Tinder : garde ou jette, puis passe au suivant."
+      ].join("\n"), {
+        reply_markup: { inline_keyboard: [
+          [{ text: "⚡ Trier maintenant", callback_data: "deal_next" }],
+          [{ text: "🔥 Top deals", callback_data: "inbox:top" }, { text: "🟡 À trier", callback_data: "inbox:review" }],
+          [{ text: "❤️ Gardés", callback_data: "inbox:saved" }, { text: "❌ Rejetés", callback_data: "inbox:rejected" }],
+          [{ text: "📡 Par radar", callback_data: "list_radars" }, { text: "🌐 Dashboard", url: dashboardLoginUrl(String(ctx.from.id)) }]
+        ] }
+      });
+      return;
+    }
+
+    let query = serviceDb()
+      .from("alerts")
+      .select("id,status,created_at,products(title,source,price_amount,price_currency,product_url,auction_end_at),deal_scores(total_score,estimated_net_profit,estimated_roi_percent),radars(name)")
+      .eq("user_id", user.id);
+    if (mode === "top") query = query.in("status", ["created", "inbox", "sent", "saved", "negotiating"]).order("created_at", { ascending: false }).limit(30);
+    if (mode === "review") query = query.in("status", ["created", "inbox", "sent"]).order("created_at", { ascending: false }).limit(8);
+    if (mode === "saved") query = query.eq("status", "saved").order("created_at", { ascending: false }).limit(8);
+    if (mode === "rejected") query = query.eq("status", "rejected").order("created_at", { ascending: false }).limit(8);
+    const { data } = await query;
+    const rows = mode === "top"
+      ? (data ?? []).sort((a: any, b: any) => {
+          const scoreA = Array.isArray(a.deal_scores) ? a.deal_scores[0]?.total_score : a.deal_scores?.total_score;
+          const scoreB = Array.isArray(b.deal_scores) ? b.deal_scores[0]?.total_score : b.deal_scores?.total_score;
+          return Number(scoreB ?? 0) - Number(scoreA ?? 0);
+        }).slice(0, 8)
+      : (data ?? []);
+    if (!rows.length) {
+      await ctx.reply("Aucun deal dans cette catégorie.", {
+        reply_markup: { inline_keyboard: [[{ text: "📥 Retour inbox", callback_data: "inbox" }]] }
+      });
+      return;
+    }
+    await ctx.reply(`📥 ${mode === "top" ? "Top deals" : mode === "review" ? "À trier" : mode === "saved" ? "Gardés" : "Rejetés"}\n\n${rows.map((alert: any, index: number) => {
+      const product = Array.isArray(alert.products) ? alert.products[0] : alert.products;
+      const score = Array.isArray(alert.deal_scores) ? alert.deal_scores[0] : alert.deal_scores;
+      const radar = Array.isArray(alert.radars) ? alert.radars[0] : alert.radars;
+      return `${index + 1}. ${product?.title ?? "Annonce"}\n   ${radar?.name ?? "Radar"} • ${product?.source ?? "source"} • score ${score?.total_score ?? "—"}/100 • ${money(score?.estimated_net_profit)}`;
+    }).join("\n\n")}`, {
+      disable_web_page_preview: true,
+      reply_markup: { inline_keyboard: [
+        [{ text: "⚡ Trier maintenant", callback_data: "deal_next" }],
+        [{ text: "📥 Retour inbox", callback_data: "inbox" }]
+      ] }
+    });
+  }
+
+  async function replyNextDeal(ctx: any) {
+    const user = await userFor(ctx);
+    const { data } = await serviceDb()
+      .from("alerts")
+      .select("id,status,created_at,products(title,source,price_amount,price_currency,product_url,auction_end_at),deal_scores(total_score,estimated_net_profit,estimated_roi_percent)")
+      .eq("user_id", user.id)
+      .in("status", ["created", "inbox", "sent"])
+      .order("created_at", { ascending: false })
+      .limit(1);
+    if (!data?.length) {
+      await ctx.reply("✅ Inbox vide. Aucun deal à trier pour le moment.", {
+        reply_markup: { inline_keyboard: [[{ text: "📡 Mes radars", callback_data: "list_radars" }]] }
+      });
+      return;
+    }
+    await replyDealCard(ctx, data[0]);
+  }
+
+  bot.command("inbox", (ctx) => replyInbox(ctx));
+  bot.action("inbox", async (ctx) => { await safeAnswerCbQuery(ctx); await replyInbox(ctx); });
+  bot.action(/^inbox:(top|review|saved|rejected)$/, async (ctx) => {
+    await safeAnswerCbQuery(ctx);
+    await replyInbox(ctx, ctx.match[1] as "top" | "review" | "saved" | "rejected");
+  });
+  bot.action("deal_next", async (ctx) => { await safeAnswerCbQuery(ctx, "Deal suivant"); await replyNextDeal(ctx); });
 
   async function replyAlerts(ctx: any) {
     const user = await userFor(ctx);
@@ -570,7 +685,9 @@ export function createBot() {
         await updateAlertStatus(alertId, user.id, "saved");
         await logTelegramEvent("deal_action_saved", user.id, { alert_id: alertId, product_id: alert.product_id });
         await safeAnswerCbQuery(ctx,"Sauvegardé");
-        await ctx.reply("✅ Deal sauvegardé. Tu le retrouves dans le Dashboard > Opportunités.");
+        await ctx.reply("✅ Deal sauvegardé. Tu le retrouves dans Gardés.", {
+          reply_markup: { inline_keyboard: [[{ text: "➡️ Deal suivant", callback_data: "deal_next" }, { text: "📥 Inbox", callback_data: "inbox" }]] }
+        });
         return;
       }
       if (action === "reject") {
@@ -580,7 +697,9 @@ export function createBot() {
         await updateAlertStatus(alertId, user.id, "rejected");
         await logTelegramEvent("deal_action_rejected", user.id, { alert_id: alertId, product_id: alert.product_id });
         await safeAnswerCbQuery(ctx,"Rejeté");
-        await ctx.reply("❌ Deal rejeté. Il sera évité dans les prochains scans.");
+        await ctx.reply("❌ Deal rejeté. Lui et ses doublons probables seront évités dans les prochains scans.", {
+          reply_markup: { inline_keyboard: [[{ text: "➡️ Deal suivant", callback_data: "deal_next" }, { text: "📥 Inbox", callback_data: "inbox" }]] }
+        });
         return;
       }
       if (action === "negotiate") {

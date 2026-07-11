@@ -100,6 +100,7 @@ const CATEGORY_PROFILES: Record<string, CategoryProfile> = {
 const DEFAULT_PROFILE = CATEGORY_PROFILES["montres"];
 const normalized=(value:string)=>value.normalize("NFD").replace(/\p{Diacritic}/gu,"").toLowerCase().trim();
 const unique = (values: string[]) => [...new Set(values.map((value) => value.trim()).filter(Boolean))];
+const STOP_WORDS = new Set(["et", "ou", "avec", "sans", "pour", "de", "du", "des", "la", "le", "les", "un", "une", "en", "a", "à", "the", "and", "or"]);
 const ALL_BRAND_ALIASES = Object.values(CATEGORY_PROFILES).flatMap((profile) => [
   ...profile.brands.map((brand) => [normalized(brand), brand] as const),
   ...Object.entries(profile.aliases).map(([alias, brand]) => [normalized(alias), brand] as const)
@@ -123,6 +124,34 @@ function escapeRegex(value: string) {
 function includesTerm(haystack: string, term: string) {
   const needle = normalized(term);
   return needle.length > 1 && new RegExp(`(^|[^a-z0-9])${escapeRegex(needle)}([^a-z0-9]|$)`, "i").test(haystack);
+}
+
+function removeKnownTerms(value: string, terms: string[]) {
+  return terms.reduce((text, term) => {
+    const pattern = new RegExp(`(^|[^a-z0-9])${escapeRegex(normalized(term))}([^a-z0-9]|$)`, "gi");
+    return text.replace(pattern, " ");
+  }, normalized(value)).replace(/\s+/g, " ").trim();
+}
+
+function manualKeywordCandidates(clean: string, knownTerms: string[]) {
+  const residual = removeKnownTerms(clean, knownTerms);
+  const chunks = [
+    ...clean.split(/[,;\n/]+/),
+    ...residual.split(/\s+/)
+  ]
+    .map((chunk) => chunk.trim())
+    .filter((chunk) => chunk.length > 1)
+    .filter((chunk) => !STOP_WORDS.has(normalized(chunk)))
+    .filter((chunk) => !knownTerms.some((term) => includesTerm(normalized(chunk), term)));
+  const sizesAndRefs = clean.match(/\b(?:taille\s*)?\d{2}(?:[.,]5)?\b|\b[A-Z]{1,5}[-\s]?\d{2,6}[A-Z]?\b/gi) ?? [];
+  return unique([...chunks, ...sizesAndRefs]).slice(0, 12);
+}
+
+function normalizeManualKeyword(keyword: string, profile: CategoryProfile) {
+  const value = normalized(keyword);
+  if (profile.label === "Montres" && /^(revise|revisee|revisée|revision|révision|service|serviced)$/.test(value)) return "révision";
+  if (profile.label === "Sneakers" && /^(ogbox|og box|boite og|boîte og)$/.test(value)) return "OG box";
+  return keyword;
 }
 
 function brandsFromAllCategories(value: string) {
@@ -211,8 +240,20 @@ export function parseSearchIntent(value:string, category?: string): SearchIntent
   const keywordGroups = hasAlternativeConnector && aliasKeywords.length > 1
     ? [...strictKeywords, aliasKeywords.join("|")]
     : detectedKeywords;
-  const typedKeywords = residualKeywords(clean, [...brands, ...models, ...detectedKeywords]);
-  const includeKeywords = unique([...keywordGroups, ...typedKeywords].slice(0, 12));
+  const typedKeywords = residualKeywords(clean, [...brands, ...models, ...detectedKeywords])
+    .map((keyword) => canonicalSearchTerm(normalizeManualKeyword(keyword, profile)))
+    .filter((keyword) => !FREE_TEXT_STOPWORDS.has(normalized(keyword)));
+  const knownManualTerms = unique([
+    ...brands,
+    ...models,
+    ...detectedKeywords,
+    ...[...brandAliases.keys()]
+  ].flatMap(searchTermAlternatives));
+  const manualKeywords = manualKeywordCandidates(clean, knownManualTerms)
+    .map((keyword) => canonicalSearchTerm(normalizeManualKeyword(keyword, profile)))
+    .filter((keyword) => !FREE_TEXT_STOPWORDS.has(normalized(keyword)))
+    .filter((keyword) => !typedKeywords.some((typed) => normalized(typed) === normalized(keyword)));
+  const includeKeywords = unique([...keywordGroups, ...typedKeywords, ...manualKeywords].slice(0, 12));
   return { brands, models, includeKeywords, excludeKeywords: profile.excludeKeywords };
 }
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { alertStatusForTelegramAction, isTelegramDealAction } from "@/telegram/deal-actions";
-import { dealAlertKeyboard } from "@/telegram/send-alert";
+import { dealAlertKeyboard, dealReviewKeyboard } from "@/telegram/send-alert";
 
 describe("telegram deal actions", () => {
   it("normalise les statuts enregistrés depuis les boutons Telegram", () => {
@@ -19,5 +19,14 @@ describe("telegram deal actions", () => {
     const keyboard = dealAlertKeyboard("alert-1", "https://example.com", false);
     expect(JSON.stringify(keyboard)).not.toContain("remind:alert-1");
     expect(JSON.stringify(keyboard)).toContain("analysis:alert-1");
+  });
+
+  it("propose une revue rapide type inbox Tinder", () => {
+    const keyboard = dealReviewKeyboard("alert-1", "https://example.com", true);
+    const body = JSON.stringify(keyboard);
+    expect(body).toContain("reject:alert-1");
+    expect(body).toContain("save:alert-1");
+    expect(body).toContain("deal_next");
+    expect(body).toContain("inbox");
   });
 });

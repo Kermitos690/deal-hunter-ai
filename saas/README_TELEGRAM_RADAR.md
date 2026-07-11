@@ -13,6 +13,7 @@ Il ne gère pas de marketplace vendeur, boutique vendeur, Wallet Pay, PayPal man
 - `/newradar` : créer un radar.
 - `/radars` : lister les radars et lancer un scan manuel.
 - `/alerts` : afficher les dernières alertes.
+- `/inbox` : ouvrir l'inbox de tri avec les deals à traiter, gardés et rejetés.
 - `/deals` : afficher les meilleures opportunités.
 - `/status` : afficher l'état du compte.
 - `/settings` : ouvrir le dashboard avec un lien signé.
@@ -32,6 +33,34 @@ Il ne gère pas de marketplace vendeur, boutique vendeur, Wallet Pay, PayPal man
 8. Il indique une marge minimum.
 9. Il choisit la fréquence.
 10. Le radar est créé et un scan immédiat est lancé quand possible.
+
+## Réception des résultats
+
+Par défaut, le bot ne doit plus bombarder l'utilisateur avec une alerte Telegram par opportunité. Le mode standard est :
+
+1. les opportunités sont créées en base ;
+2. elles sont rangées dans l'inbox de l'utilisateur ;
+3. Telegram envoie un résumé de scan ;
+4. l'utilisateur trie ensuite avec `Garder`, `Jeter` ou `Deal suivant`.
+
+Variables de contrôle :
+
+- `TELEGRAM_ALERT_DELIVERY_MODE=digest` : mode recommandé, résumé + inbox.
+- `TELEGRAM_ALERT_DELIVERY_MODE=individual` : ancien mode, une alerte Telegram par deal.
+- `TELEGRAM_MAX_IMMEDIATE_ALERTS_PER_SCAN=0` : nombre maximum d'alertes immédiates avant résumé. Par défaut `0`.
+
+Le bouton `Jeter` doit empêcher le même produit ou un doublon probable de revenir dans les prochains scans du même utilisateur.
+
+## Canaux de diffusion Telegram
+
+Un bot Telegram ne peut pas créer seul des canaux de diffusion côté utilisateur. Pour router certains résumés vers un canal, il faut :
+
+1. créer manuellement le canal Telegram ;
+2. ajouter le bot comme administrateur du canal ;
+3. enregistrer l'identifiant du canal côté application ;
+4. envoyer uniquement des résumés ou sélections validées, pas le flux brut complet.
+
+À ce stade, l'inbox Telegram est la source officielle de tri. Les canaux doivent rester optionnels pour éviter de recréer le problème de surcharge de messages.
 
 ## Sources recommandées
 
@@ -118,7 +147,9 @@ Tester dans Telegram :
 10. vérifier `Mes radars`
 11. lancer `Scanner`
 12. tester les boutons deal : Sauvegarder, Rejeter, Négocier, Analyse complète
-13. ouvrir Dashboard
+13. ouvrir `/inbox`
+14. tester `Deal suivant`, `Garder`, `Jeter`, `Top deals`
+15. ouvrir Dashboard
 
 Critères d'acceptation :
 
@@ -126,4 +157,5 @@ Critères d'acceptation :
 - aucun bouton silencieux ;
 - aucun secret affiché ;
 - textes compréhensibles pour un utilisateur non technique ;
-- les actions répétées ne créent pas de doublon critique.
+- les actions répétées ne créent pas de doublon critique ;
+- un deal rejeté ou son doublon probable ne revient pas dans l'inbox de l'utilisateur.
