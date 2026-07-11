@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { apiUser, isAdmin, jsonError } from "@/lib/api";
 import { serviceDb } from "@/lib/db/server";
+import { manualSubscriptionState } from "@/lib/billing/admin-subscriptions";
 
 type Context = { params: Promise<{ id: string }> };
 const schema = z.object({
@@ -37,6 +38,22 @@ export async function PATCH(request: Request, { params }: Context) {
     .single();
   if (error) return jsonError("Mise à jour impossible.", 500);
 
+  const subscriptionPlan = parsed.data.plan ?? target.plan;
+  const subscriptionStatus = parsed.data.status ?? target.status;
+  const { data: subscription, error: subscriptionError } = await serviceDb()
+    .from("subscriptions")
+    .upsert(
+      manualSubscriptionState({
+        userId: id,
+        plan: subscriptionPlan,
+        userStatus: subscriptionStatus
+      }),
+      { onConflict: "user_id" }
+    )
+    .select("provider,plan,status,current_period_end,cancel_at_period_end")
+    .single();
+  if (subscriptionError) return jsonError("Utilisateur mis à jour, mais synchronisation abonnement impossible.", 500);
+
   if (parsed.data.status === "suspended") {
     await serviceDb()
       .from("auction_reminders")
@@ -58,5 +75,5 @@ export async function PATCH(request: Request, { params }: Context) {
       changes: parsed.data
     }
   });
-  return NextResponse.json({ user: data });
+  return NextResponse.json({ user: data, subscription });
 }

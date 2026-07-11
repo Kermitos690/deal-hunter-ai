@@ -14,6 +14,7 @@ export function AdminUserActions({
 }: Props) {
   const [plan, setPlan] = useState(initialPlan);
   const [status, setStatus] = useState(initialStatus);
+  const [subscription, setSubscription] = useState("");
   const [message, setMessage] = useState("");
   const [saving, setSaving] = useState(false);
 
@@ -27,6 +28,9 @@ export function AdminUserActions({
     });
     const body = await response.json();
     setMessage(response.ok ? "Enregistré" : body.error ?? "Erreur");
+    if (response.ok && body.subscription) {
+      setSubscription(`${body.subscription.provider} • ${body.subscription.plan} • ${body.subscription.status}`);
+    }
     setSaving(false);
   }
 
@@ -53,5 +57,6 @@ export function AdminUserActions({
       {saving ? "…" : "Enregistrer"}
     </button>
     {message && <span className="text-xs text-slate-400">{message}</span>}
+    {subscription && <span className="text-xs text-mint">{subscription}</span>}
   </div>;
 }
