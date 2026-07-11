@@ -13,6 +13,7 @@ import { mainMenuKeyboard, mainMenuText } from "@/telegram/menu";
 import { logTelegramEvent } from "@/telegram/observability";
 import { dealReviewKeyboard } from "@/telegram/send-alert";
 import { languageKeyboard, normalizeTelegramLanguage, t, type TelegramLanguage } from "@/telegram/i18n";
+import { translateTelegramText } from "@/lib/translation/yandex";
 
 const ACTIVE_RADAR_SOURCES = ["ebay", "ricardo", "anibis", "tutti", "komehyo", "email-alerts", "rss"];
 export { scanResultText } from "@/telegram/scan-result-text";
@@ -190,9 +191,9 @@ function imageUrlsForDealAlert(alert: any) {
     .slice(0, 10);
 }
 
-async function replyDealCard(ctx: any, alert: any) {
+async function replyDealCard(ctx: any, alert: any, lang: TelegramLanguage = "fr") {
   const product = Array.isArray(alert.products) ? alert.products[0] : alert.products;
-  const text = compactDealText(alert);
+  const text = await translateTelegramText(compactDealText(alert), lang);
   const reply_markup = dealReviewKeyboard(alert.id, product?.product_url ?? "https://t.me", Boolean(product?.auction_end_at));
   const images = imageUrlsForDealAlert(alert);
   if (images.length > 1) {
@@ -202,7 +203,7 @@ async function replyDealCard(ctx: any, alert: any) {
         media: url,
         ...(index === 0 ? { caption: text.slice(0, 1000) } : {})
       })));
-      await ctx.reply("Actions rapides pour ce deal :", { reply_markup });
+      await ctx.reply(await translateTelegramText("Actions rapides pour ce deal :", lang), { reply_markup });
       return;
     } catch (error) {
       console.error("Échec envoi album Telegram:", error instanceof Error ? error.message : "Erreur inconnue");
@@ -546,6 +547,7 @@ export function createBot() {
     if (mode === "saved") query = query.eq("status", "saved").order("created_at", { ascending: false }).limit(8);
     if (mode === "rejected") query = query.eq("status", "rejected").order("created_at", { ascending: false }).limit(8);
     const { data } = await query;
+    const lang = userLanguage(ctx, user);
     const rows = mode === "top"
       ? (data ?? []).sort((a: any, b: any) => {
           const scoreA = Array.isArray(a.deal_scores) ? a.deal_scores[0]?.total_score : a.deal_scores?.total_score;
@@ -559,12 +561,13 @@ export function createBot() {
       });
       return;
     }
-    await ctx.reply(`📥 ${mode === "top" ? "Top deals" : mode === "review" ? "À trier" : mode === "saved" ? "Gardés" : "Rejetés"}\n\n${rows.map((alert: any, index: number) => {
+    const inboxText = `📥 ${mode === "top" ? "Top deals" : mode === "review" ? "À trier" : mode === "saved" ? "Gardés" : "Rejetés"}\n\n${rows.map((alert: any, index: number) => {
       const product = Array.isArray(alert.products) ? alert.products[0] : alert.products;
       const score = Array.isArray(alert.deal_scores) ? alert.deal_scores[0] : alert.deal_scores;
       const radar = Array.isArray(alert.radars) ? alert.radars[0] : alert.radars;
       return `${index + 1}. ${product?.title ?? "Annonce"}\n   ${radar?.name ?? "Radar"} • ${product?.source ?? "source"} • score ${score?.total_score ?? "—"}/100 • ${money(score?.estimated_net_profit)}`;
-    }).join("\n\n")}`, {
+    }).join("\n\n")}`;
+    await ctx.reply(await translateTelegramText(inboxText, lang), {
       disable_web_page_preview: true,
       reply_markup: { inline_keyboard: [
         [{ text: "⚡ Trier maintenant", callback_data: "deal_next" }],
@@ -575,6 +578,7 @@ export function createBot() {
 
   async function replyNextDeal(ctx: any) {
     const user = await userFor(ctx);
+    const lang = userLanguage(ctx, user);
     const { data } = await serviceDb()
       .from("alerts")
       .select("id,status,created_at,products(title,source,price_amount,price_currency,product_url,auction_end_at,product_images(image_url,position)),deal_scores(total_score,estimated_net_profit,estimated_roi_percent)")
@@ -588,7 +592,7 @@ export function createBot() {
       });
       return;
     }
-    await replyDealCard(ctx, data[0]);
+    await replyDealCard(ctx, data[0], lang);
   }
 
   bot.command("inbox", (ctx) => replyInbox(ctx));

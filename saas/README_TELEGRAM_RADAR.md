@@ -33,6 +33,15 @@ Le bot supporte une base multilingue pour les points d'entrée Telegram :
 
 La langue peut être choisie avec `/language`. La préférence est stockée dans `users.preferred_language`.
 
+Si Yandex Translate est configuré, les textes dynamiques du tri Telegram peuvent être traduits automatiquement selon la langue de l'utilisateur.
+
+Variables requises :
+
+- `YANDEX_TRANSLATE_API_KEY`
+- `YANDEX_TRANSLATE_FOLDER_ID`
+
+Si ces variables sont absentes ou si l'API échoue, le bot conserve le texte français sans bloquer le flux utilisateur.
+
 Le français reste le fallback. Les textes métier profonds comme les analyses complètes, le scoring détaillé et certaines pages dashboard doivent être traduits progressivement dans la phase V2 Premium pour éviter une régression massive.
 
 ## Flow création radar
