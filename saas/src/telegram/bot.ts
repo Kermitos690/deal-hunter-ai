@@ -165,11 +165,50 @@ function compactDealText(alert: any) {
   ].filter(Boolean).join("\n");
 }
 
+function imageUrlsForDealAlert(alert: any) {
+  const product = Array.isArray(alert.products) ? alert.products[0] : alert.products;
+  const images = Array.isArray(product?.product_images) ? product.product_images : [];
+  return images
+    .slice()
+    .sort((a: any, b: any) => Number(a?.position ?? 0) - Number(b?.position ?? 0))
+    .map((image: any) => String(image?.image_url ?? "").trim())
+    .filter((url: string) => /^https?:\/\//i.test(url))
+    .filter((url: string, index: number, all: string[]) => all.indexOf(url) === index)
+    .slice(0, 10);
+}
+
 async function replyDealCard(ctx: any, alert: any) {
   const product = Array.isArray(alert.products) ? alert.products[0] : alert.products;
-  await ctx.reply(compactDealText(alert), {
+  const text = compactDealText(alert);
+  const reply_markup = dealReviewKeyboard(alert.id, product?.product_url ?? "https://t.me", Boolean(product?.auction_end_at));
+  const images = imageUrlsForDealAlert(alert);
+  if (images.length > 1) {
+    try {
+      await ctx.replyWithMediaGroup(images.map((url: string, index: number) => ({
+        type: "photo",
+        media: url,
+        ...(index === 0 ? { caption: text.slice(0, 1000) } : {})
+      })));
+      await ctx.reply("Actions rapides pour ce deal :", { reply_markup });
+      return;
+    } catch (error) {
+      console.error("Échec envoi album Telegram:", error instanceof Error ? error.message : "Erreur inconnue");
+    }
+  }
+  if (images.length === 1) {
+    try {
+      await ctx.replyWithPhoto(images[0], {
+        caption: text.slice(0, 1000),
+        reply_markup
+      });
+      return;
+    } catch (error) {
+      console.error("Échec envoi photo Telegram:", error instanceof Error ? error.message : "Erreur inconnue");
+    }
+  }
+  await ctx.reply(text, {
     disable_web_page_preview: true,
-    reply_markup: dealReviewKeyboard(alert.id, product?.product_url ?? "https://t.me", Boolean(product?.auction_end_at))
+    reply_markup
   });
 }
 
@@ -461,7 +500,7 @@ export function createBot() {
 
     let query = serviceDb()
       .from("alerts")
-      .select("id,status,created_at,products(title,source,price_amount,price_currency,product_url,auction_end_at),deal_scores(total_score,estimated_net_profit,estimated_roi_percent),radars(name)")
+      .select("id,status,created_at,products(title,source,price_amount,price_currency,product_url,auction_end_at,product_images(image_url,position)),deal_scores(total_score,estimated_net_profit,estimated_roi_percent),radars(name)")
       .eq("user_id", user.id);
     if (mode === "top") query = query.in("status", ["created", "inbox", "sent", "saved", "negotiating"]).order("created_at", { ascending: false }).limit(30);
     if (mode === "review") query = query.in("status", ["created", "inbox", "sent"]).order("created_at", { ascending: false }).limit(8);
@@ -499,7 +538,7 @@ export function createBot() {
     const user = await userFor(ctx);
     const { data } = await serviceDb()
       .from("alerts")
-      .select("id,status,created_at,products(title,source,price_amount,price_currency,product_url,auction_end_at),deal_scores(total_score,estimated_net_profit,estimated_roi_percent)")
+      .select("id,status,created_at,products(title,source,price_amount,price_currency,product_url,auction_end_at,product_images(image_url,position)),deal_scores(total_score,estimated_net_profit,estimated_roi_percent)")
       .eq("user_id", user.id)
       .in("status", ["created", "inbox", "sent"])
       .order("created_at", { ascending: false })
