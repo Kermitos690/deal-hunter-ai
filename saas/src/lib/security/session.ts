@@ -3,6 +3,7 @@ import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { serviceDb } from "@/lib/db/server";
 import { env } from "@/lib/env";
+import { effectivePlanForUser } from "@/lib/referrals/referral-program";
 import type { AppUser } from "@/types";
 
 const COOKIE = "deal_hunter_session";
@@ -48,11 +49,12 @@ export async function currentUser(): Promise<AppUser | null> {
   if (!telegramId) return null;
   const { data } = await serviceDb()
     .from("users")
-    .select("id,telegram_id,email,display_name,role,plan,status,alerts_enabled,stripe_customer_id")
+    .select("id,telegram_id,email,display_name,role,plan,status,alerts_enabled,stripe_customer_id,referral_code,referred_by_user_id,referral_months_earned,referral_access_until")
     .eq("telegram_id", telegramId)
     .maybeSingle();
   if (!data || data.status === "suspended") return null;
-  return data as AppUser;
+  const user = data as AppUser;
+  return { ...user, plan: effectivePlanForUser(user) };
 }
 
 export async function requireUser() {
