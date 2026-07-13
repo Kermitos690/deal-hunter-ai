@@ -135,21 +135,31 @@ export function dealReviewKeyboard(alertId: string, productUrl: string, hasAucti
   };
 }
 
+function formatBudget(value: unknown) {
+  const amount = Number(value ?? 0);
+  return Number.isFinite(amount) && amount > 0
+    ? new Intl.NumberFormat("fr-CH", { maximumFractionDigits: 0 }).format(amount)
+    : "—";
+}
+
 export async function sendScanDigest(
   telegramId: string,
-  radar: Pick<Radar, "id" | "name">,
+  radar: Pick<Radar, "id" | "name" | "max_buy_price">,
   result: { candidatesFound: number; alertsCreated: number; alertsSent: number; telegramSkipped?: number }
 ): Promise<TelegramAlertResult> {
+  const shortRadarId = String(radar.id).replace(/-/g, "").slice(0, 6).toUpperCase();
   const text = [
     "📥 Nouveaux résultats prêts",
     "",
     `📡 Radar : ${radar.name}`,
+    `💰 Budget max : ${formatBudget(radar.max_buy_price)} CHF`,
+    `🆔 Radar : #${shortRadarId}`,
     `🔎 ${result.candidatesFound} annonce(s) analysée(s)`,
     `🚨 ${result.alertsCreated} opportunité(s) à trier`,
     "",
     "Je ne t’envoie plus tout en vrac. Ouvre l’inbox et traite les deals un par un.",
     "",
-    "_scan-digest-v1_"
+    "_scan-digest-v2_"
   ].join("\n");
   return sendTelegramText(telegramId, text, {
     reply_markup: {
