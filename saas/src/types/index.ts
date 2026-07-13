@@ -133,7 +133,7 @@ export interface DealScore {
   decisionStatus?: "APPROVED" | "CONDITIONAL" | "REVIEW_REQUIRED" | "REJECTED";
   decisionRationale?: string;
   recommendation: Recommendation;
-  scoringVersion: "v2" | "v3" | "v4" | "v5";
+  scoringVersion: "v2" | "v3" | "v4" | "v5" | "v6";
   marketConfidence: MarketConfidence;
   comparableCount: number;
   reasons: string[];
