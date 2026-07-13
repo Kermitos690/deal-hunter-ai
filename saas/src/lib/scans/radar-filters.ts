@@ -1,4 +1,5 @@
 import { isWatchCategory, looksLikeCompleteWatchTitle, matchesAllSearchTerms, matchesAnySearchTerm } from "@/lib/search-precision";
+import { pokemonCandidateMismatchReasons } from "@/lib/tcg/pokemon";
 import type { DealScore, ProductCandidate, Radar } from "@/types";
 
 const EU = new Set(["AT","BE","BG","HR","CY","CZ","DE","DK","EE","ES","FI","FR","GR","HU","IE","IT","LT","LU","LV","MT","NL","PL","PT","RO","SE","SI","SK"]);
@@ -50,7 +51,8 @@ export function candidateMismatchReasons(candidate: ProductCandidate, radar: Rad
     reasons.push("not_complete_watch");
   }
   if (radar.brands.length && !matchesAnySearchTerm(text, radar.brands)) reasons.push("brand_not_matched");
-  if (radar.models.length && !matchesAnySearchTerm(text, radar.models)) reasons.push("model_not_matched");
+  const searchableModels = radar.models.filter((model) => !model.startsWith("tcg:"));
+  if (searchableModels.length && !matchesAnySearchTerm(text, searchableModels)) reasons.push("model_not_matched");
   if (radar.include_keywords.length && !matchesAllSearchTerms(text, radar.include_keywords)) reasons.push("keyword_not_matched");
   if (radar.exclude_keywords.length && matchesAnySearchTerm(text, radar.exclude_keywords)) reasons.push("excluded_keyword");
 
@@ -60,7 +62,8 @@ export function candidateMismatchReasons(candidate: ProductCandidate, radar: Rad
     if (!accepted.includes(country) && !(accepted.includes("EU") && EU.has(country))) reasons.push("country_not_accepted");
   }
   if (candidate.saleType && radar.sale_types.length && !radar.sale_types.includes(candidate.saleType)) reasons.push("sale_type_not_accepted");
-  return reasons;
+  reasons.push(...pokemonCandidateMismatchReasons(candidate, radar));
+  return [...new Set(reasons)];
 }
 
 export function candidateMatchesRadar(candidate: ProductCandidate, radar: Radar) {
