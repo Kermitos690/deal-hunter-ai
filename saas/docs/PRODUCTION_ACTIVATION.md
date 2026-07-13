@@ -45,6 +45,22 @@ Le workflow exécute :
 
 Puis il effectue un seul déploiement Vercel `--prod --force` et teste l’URL immuable ainsi que l’alias `deal-hunter-ai.vercel.app`.
 
+## Rapport d’exécution
+
+À chaque exécution, le workflow crée ou met à jour l’issue GitHub intitulée `Deal Hunter production activation status`.
+
+Le rapport indique uniquement :
+
+- le statut global ;
+- l’issue ou l’étape bloquante ;
+- le résultat des migrations ;
+- le résultat du quality gate ;
+- le résultat Vercel ;
+- l’état du parrainage ;
+- l’URL de déploiement lorsqu’elle existe.
+
+Aucune valeur de secret n’est publiée dans l’issue.
+
 ## Sponsoring
 
 Les campagnes sponsorisées restent désactivées jusqu’à la création, l’approbation et le test d’une campagne explicite dans `/admin/channels`.
