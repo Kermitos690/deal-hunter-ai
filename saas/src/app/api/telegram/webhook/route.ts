@@ -1,9 +1,13 @@
 import { NextResponse } from "next/server";
 import type { Update } from "telegraf/types";
-import { createBot } from "@/telegram/bot";
-import { serviceDb } from "@/lib/db/server";
 import { jsonError } from "@/lib/api";
+import { serviceDb } from "@/lib/db/server";
+import { createBot } from "@/telegram/bot";
 import { classifyTelegramWebhookPayload } from "@/telegram/webhook-utils";
+
+export const dynamic = "force-dynamic";
+
+const MAX_TELEGRAM_WEBHOOK_BYTES = 512_000;
 
 export async function POST(request: Request) {
   const secret = request.headers.get("x-telegram-bot-api-secret-token");
@@ -12,7 +16,22 @@ export async function POST(request: Request) {
     return jsonError("Webhook refusé.", 401);
   }
 
-  const parsed = classifyTelegramWebhookPayload(await request.json().catch(() => null));
+  const contentLength = Number(request.headers.get("content-length") ?? 0);
+  if (Number.isFinite(contentLength) && contentLength > MAX_TELEGRAM_WEBHOOK_BYTES) {
+    return jsonError("Payload Telegram trop volumineux.", 413);
+  }
+  const rawBody = await request.text();
+  if (Buffer.byteLength(rawBody, "utf8") > MAX_TELEGRAM_WEBHOOK_BYTES) {
+    return jsonError("Payload Telegram trop volumineux.", 413);
+  }
+
+  let payload: unknown;
+  try {
+    payload = JSON.parse(rawBody);
+  } catch {
+    payload = null;
+  }
+  const parsed = classifyTelegramWebhookPayload(payload);
   if (!parsed.ok) return jsonError(parsed.error, parsed.status);
 
   const { update, updateId } = parsed;
