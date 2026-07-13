@@ -1,6 +1,7 @@
 import type { AppUser, Plan } from "@/types";
 
 const REFERRAL_CODE = /^[A-Z0-9]{6,32}$/;
+export const referralCookieName = "deal_hunter_referral";
 
 export function normalizeReferralCode(value?: string | null) {
   const normalized = String(value ?? "")
@@ -17,7 +18,11 @@ export function referralStartPayload(code: string) {
 }
 
 export function referralBotUrl(code: string, botUsername = process.env.TELEGRAM_BOT_USERNAME ?? "deal_hunter_cards_bot") {
-  return `https://t.me/${botUsername.replace(/^@/, "")}?start=${encodeURIComponent(referralStartPayload(code))}`;
+  const normalized = normalizeReferralCode(code);
+  if (!normalized) throw new Error("Code de parrainage invalide.");
+  const appBaseUrl = process.env.APP_BASE_URL?.replace(/\/$/, "");
+  if (appBaseUrl) return `${appBaseUrl}/r/${encodeURIComponent(normalized)}`;
+  return `https://t.me/${botUsername.replace(/^@/, "")}?start=${encodeURIComponent(referralStartPayload(normalized))}`;
 }
 
 export function referralAccessIsActive(user: Pick<AppUser, "referral_access_until">, now = new Date()) {
@@ -50,10 +55,11 @@ export function monthlyReferralCreditAmount(input: {
 
 export function referralProgress(monthsEarned: number) {
   const earned = Math.max(0, Math.trunc(monthsEarned));
+  const monthsTowardNextYear = earned % 12;
   return {
     monthsEarned: earned,
     fullYearsEarned: Math.floor(earned / 12),
-    monthsTowardNextYear: earned % 12,
-    referralsUntilNextFreeYear: 12 - (earned % 12 || 12)
+    monthsTowardNextYear,
+    referralsUntilNextFreeYear: monthsTowardNextYear === 0 ? 12 : 12 - monthsTowardNextYear
   };
 }
