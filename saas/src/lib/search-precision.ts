@@ -103,7 +103,9 @@ const HARD_ACCESSORY_TERMS = [
 
 const ACCESSORY_PRODUCT_PHRASES = [
   "watch strap", "watch band", "replacement strap", "replacement bracelet", "spare strap", "spare bracelet",
-  "strap for", "bracelet for", "band for", "fits rolex", "fits omega", "fits tag heuer"
+  "strap for", "bracelet for", "band for", "fits rolex", "fits omega", "fits tag heuer",
+  "watch glass", "watch glasses", "watch crystal", "replacement crystal", "replacement glass",
+  "crystal for", "glass for", "assortment crystal", "assortment watch glass"
 ];
 
 const SOFT_ACCESSORY_TERMS = [
