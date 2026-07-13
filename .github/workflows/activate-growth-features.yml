@@ -10,6 +10,7 @@ on:
 
 permissions:
   contents: read
+  issues: write
 
 concurrency:
   group: deal-hunter-production-activation
@@ -34,6 +35,7 @@ jobs:
           ref: main
 
       - name: Validate production credentials
+        id: credentials
         shell: bash
         run: |
           set -euo pipefail
@@ -72,6 +74,7 @@ jobs:
           cache-dependency-path: saas/package-lock.json
 
       - name: Verify migration allowlist
+        id: allowlist
         shell: bash
         run: |
           set -euo pipefail
@@ -96,6 +99,7 @@ jobs:
           npx --yes vercel@latest --version
 
       - name: Link production Supabase project
+        id: link_supabase
         working-directory: saas
         shell: bash
         run: |
@@ -105,6 +109,7 @@ jobs:
             --password "$SUPABASE_DB_PASSWORD"
 
       - name: Dry-run and guard pending migrations
+        id: migration_guard
         working-directory: saas
         shell: bash
         run: |
@@ -128,6 +133,7 @@ jobs:
           fi
 
       - name: Apply allowlisted Supabase migrations
+        id: apply_migrations
         working-directory: saas
         shell: bash
         run: |
@@ -135,6 +141,7 @@ jobs:
           npx --yes supabase@latest db push --linked --yes
 
       - name: Verify Supabase migration history
+        id: verify_migrations
         working-directory: saas
         shell: bash
         run: |
@@ -148,6 +155,7 @@ jobs:
           done
 
       - name: Link Vercel production project
+        id: link_vercel
         working-directory: saas
         shell: bash
         run: |
@@ -177,6 +185,7 @@ jobs:
           fi
 
       - name: Configure production feature flags
+        id: flags
         working-directory: saas
         shell: bash
         env:
@@ -206,6 +215,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Run production quality gate
+        id: quality
         working-directory: saas
         shell: bash
         run: |
@@ -236,6 +246,7 @@ jobs:
           echo "Production deployment: $deployment_url" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Production smoke tests
+        id: smoke
         shell: bash
         env:
           DEPLOYMENT_URL: ${{ steps.deployment.outputs.url }}
@@ -253,3 +264,78 @@ jobs:
             echo "- Production alias: reachable"
             echo "- No sponsored placement was enabled"
           } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Publish activation outcome
+        if: always()
+        uses: actions/github-script@v7
+        env:
+          JOB_STATUS: ${{ job.status }}
+          CREDENTIALS: ${{ steps.credentials.outcome }}
+          ALLOWLIST: ${{ steps.allowlist.outcome }}
+          LINK_SUPABASE: ${{ steps.link_supabase.outcome }}
+          MIGRATION_GUARD: ${{ steps.migration_guard.outcome }}
+          APPLY_MIGRATIONS: ${{ steps.apply_migrations.outcome }}
+          VERIFY_MIGRATIONS: ${{ steps.verify_migrations.outcome }}
+          LINK_VERCEL: ${{ steps.link_vercel.outcome }}
+          REFERRALS: ${{ steps.referral_readiness.outputs.enable_referrals || 'not-evaluated' }}
+          FLAGS: ${{ steps.flags.outcome }}
+          QUALITY: ${{ steps.quality.outcome }}
+          DEPLOYMENT: ${{ steps.deployment.outcome }}
+          DEPLOYMENT_URL: ${{ steps.deployment.outputs.url || '' }}
+          SMOKE: ${{ steps.smoke.outcome }}
+        with:
+          script: |
+            const title = "Deal Hunter production activation status";
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const rows = [
+              ["Credentials", process.env.CREDENTIALS],
+              ["Migration allowlist", process.env.ALLOWLIST],
+              ["Supabase link", process.env.LINK_SUPABASE],
+              ["Migration dry-run guard", process.env.MIGRATION_GUARD],
+              ["Migrations applied", process.env.APPLY_MIGRATIONS],
+              ["Migration history verified", process.env.VERIFY_MIGRATIONS],
+              ["Vercel link", process.env.LINK_VERCEL],
+              ["Production flags", process.env.FLAGS],
+              ["Quality gate", process.env.QUALITY],
+              ["Vercel deployment", process.env.DEPLOYMENT],
+              ["Smoke tests", process.env.SMOKE]
+            ];
+            const table = rows.map(([name, value]) => `| ${name} | ${value || "skipped"} |`).join("\n");
+            const body = [
+              `## Latest activation run`,
+              ``,
+              `- Overall job: **${process.env.JOB_STATUS}**`,
+              `- Commit: \`${context.sha}\``,
+              `- Run: ${runUrl}`,
+              `- Referrals enabled: **${process.env.REFERRALS}**`,
+              `- Deployment URL: ${process.env.DEPLOYMENT_URL || "not produced"}`,
+              ``,
+              `| Stage | Outcome |`,
+              `|---|---|`,
+              table,
+              ``,
+              `No secret values are included in this report.`
+            ].join("\n");
+
+            const { data: issues } = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: "open",
+              per_page: 100
+            });
+            const existing = issues.find((issue) => issue.title === title && !issue.pull_request);
+            if (existing) {
+              await github.rest.issues.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: existing.number,
+                body
+              });
+            } else {
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title,
+                body
+              });
+            }
