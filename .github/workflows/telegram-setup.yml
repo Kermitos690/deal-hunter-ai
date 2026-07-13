@@ -1,0 +1,51 @@
+name: Configure Telegram webhook
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deal-hunter-telegram-setup
+  cancel-in-progress: false
+
+jobs:
+  configure:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      CRON_SECRET: ${{ secrets.CRON_SECRET }}
+      APP_BASE_URL: ${{ secrets.APP_BASE_URL || 'https://deal-hunter-ai.vercel.app' }}
+
+    steps:
+      - name: Validate configuration
+        run: |
+          set -euo pipefail
+          test -n "${CRON_SECRET}" || { echo "CRON_SECRET is missing from GitHub Actions secrets" >&2; exit 1; }
+          case "${APP_BASE_URL}" in
+            https://*) ;;
+            *) echo "APP_BASE_URL must use HTTPS" >&2; exit 1 ;;
+          esac
+
+      - name: Configure and verify Telegram webhook
+        run: |
+          set -euo pipefail
+          base_url="${APP_BASE_URL%/}"
+          response="$(curl --fail-with-body --silent --show-error \
+            --retry 2 --retry-delay 2 --retry-connrefused --max-time 30 \
+            -X POST \
+            -H "Authorization: Bearer ${CRON_SECRET}" \
+            "${base_url}/api/telegram/setup")"
+          printf '%s\n' "$response"
+          printf '%s' "$response" | jq -e '
+            .ok == true and
+            .webhookUrl == "https://deal-hunter-ai.vercel.app/api/telegram/webhook" and
+            (.botUsername | ascii_downcase) == "deal_hunter_cards_bot"
+          '
+          {
+            echo "### Telegram webhook"
+            echo "- Bot: @$(printf '%s' "$response" | jq -r '.botUsername')"
+            echo "- Webhook: $(printf '%s' "$response" | jq -r '.webhookUrl')"
+            echo "- Pending updates: $(printf '%s' "$response" | jq -r '.pendingUpdateCount')"
+          } >> "$GITHUB_STEP_SUMMARY"
