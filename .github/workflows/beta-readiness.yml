@@ -1,0 +1,95 @@
+name: Deal Hunter beta readiness
+
+on:
+  push:
+    branches:
+      - feat/beta-readiness-final
+  pull_request:
+    paths:
+      - "saas/**"
+      - ".github/workflows/**"
+      - "docs/**"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deal-hunter-beta-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality-and-inventory:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: saas
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: saas/package-lock.json
+
+      - name: Build repository inventory
+        working-directory: .
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            echo "# Deal Hunter repository inventory"
+            echo
+            echo "## Files"
+            find saas/src saas/supabase saas/scripts .github/workflows -type f | sort
+            echo
+            echo "## Next.js route handlers"
+            find saas/src/app -type f \( -name 'route.ts' -o -name 'page.tsx' -o -name 'layout.tsx' \) | sort
+            echo
+            echo "## Supabase migrations"
+            find saas/supabase/migrations -type f -maxdepth 1 | sort
+            echo
+            echo "## Environment variable names referenced"
+            grep -RhoE 'process\.env\.[A-Z0-9_]+' saas/src saas/scripts | sed 's/process\.env\.//' | sort -u || true
+            echo
+            echo "## TODO / FIXME markers"
+            grep -RInE 'TODO|FIXME|HACK|XXX' saas/src saas/scripts saas/supabase .github/workflows || true
+            echo
+            echo "## Files importing serviceDb"
+            grep -RIl 'serviceDb' saas/src | sort || true
+            echo
+            echo "## Client files mentioning service role"
+            grep -RIl 'SUPABASE_SERVICE_ROLE_KEY' saas/src | sort || true
+            echo
+            echo "## Potential hard-coded live credentials (filenames only)"
+            grep -RIlE 'sk_live_[A-Za-z0-9]+|bot[0-9]{6,}:[A-Za-z0-9_-]{20,}|eyJhbGciOiJIUzI1Ni' saas .github --exclude-dir=node_modules || true
+          } | tee beta-audit.txt
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Unit tests
+        run: npm run test
+
+      - name: Production build
+        run: npm run build
+
+      - name: Upload beta audit
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: deal-hunter-beta-audit-${{ github.run_id }}
+          path: |
+            beta-audit.txt
+            saas/coverage
+          if-no-files-found: ignore
+          retention-days: 7
