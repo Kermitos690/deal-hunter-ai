@@ -17,6 +17,10 @@ export interface AppUser {
   whatsapp_alerts_enabled?: boolean;
   whatsapp_opt_in_at?: string | null;
   stripe_customer_id?: string | null;
+  referral_code?: string | null;
+  referred_by_user_id?: string | null;
+  referral_months_earned?: number;
+  referral_access_until?: string | null;
 }
 
 export interface Radar {
