@@ -7,11 +7,14 @@ import {
   referralProgress
 } from "./referral-program";
 
+const referralsEnabled = () => process.env.ENABLE_REFERRALS === "true";
+
 function dbFailure(operation: string, error: { message?: string } | null) {
   if (error) throw new Error(`${operation}: ${error.message ?? "database error"}`);
 }
 
 export async function claimReferralCode(userId: string, code: string) {
+  if (!referralsEnabled()) return { claimed: false, reason: "disabled" as const };
   const normalized = normalizeReferralCode(code);
   if (!normalized) return { claimed: false, reason: "invalid_code" as const };
   const { data, error } = await serviceDb().rpc("claim_referral_code", {
@@ -32,6 +35,7 @@ export async function claimReferralCode(userId: string, code: string) {
 }
 
 export async function qualifyReferralForPaidInvoice(userId: string, invoiceId: string) {
+  if (!referralsEnabled()) return null;
   const { data, error } = await serviceDb().rpc("qualify_paid_referral", {
     p_referred_user_id: userId,
     p_invoice_id: invoiceId
@@ -42,6 +46,7 @@ export async function qualifyReferralForPaidInvoice(userId: string, invoiceId: s
 }
 
 export async function referralSummary(userId: string) {
+  if (!referralsEnabled()) throw new Error("Referral programme disabled.");
   const db = serviceDb();
   const [{ data: user, error: userError }, { data: referrals, error: referralsError }, { data: rewards, error: rewardsError }] = await Promise.all([
     db.from("users")
@@ -80,6 +85,7 @@ export async function referralSummary(userId: string) {
 }
 
 export async function applyAvailableReferralCredits(userId: string) {
+  if (!referralsEnabled()) return { applied: 0, skipped: "referral_disabled" as const };
   const stripe = stripeClient();
   if (!stripe) return { applied: 0, skipped: "stripe_disabled" as const };
   const db = serviceDb();
