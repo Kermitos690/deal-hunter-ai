@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
-
-const TELEGRAM_SETUP_SECRET = "dealhunter-setup-gaetan-2026-telegram";
+import { apiUser, isAdmin, jsonError } from "@/lib/api";
 
 const TELEGRAM_COMMANDS = [
   { command: "start", description: "Créer ou ouvrir mon compte" },
@@ -8,6 +7,7 @@ const TELEGRAM_COMMANDS = [
   { command: "id", description: "Afficher mon identifiant Telegram" },
   { command: "radars", description: "Lister mes radars" },
   { command: "newradar", description: "Créer un radar" },
+  { command: "inbox", description: "Trier mes opportunités" },
   { command: "deals", description: "Voir mes opportunités" },
   { command: "alerts", description: "Voir mes alertes" },
   { command: "status", description: "Voir l’état de mon compte" },
@@ -19,14 +19,11 @@ const TELEGRAM_COMMANDS = [
   { command: "help", description: "Afficher l’aide" }
 ];
 
-function authorized(request: Request) {
-  const url = new URL(request.url);
-  const provided = url.searchParams.get("secret");
+async function authorized(request: Request) {
   const cronSecret = process.env.CRON_SECRET;
-  return provided === TELEGRAM_SETUP_SECRET ||
-    Boolean(cronSecret && (
-      request.headers.get("authorization") === `Bearer ${cronSecret}` || provided === cronSecret
-    ));
+  if (cronSecret && request.headers.get("authorization") === `Bearer ${cronSecret}`) return true;
+  const auth = await apiUser();
+  return "user" in auth && isAdmin(auth.user);
 }
 
 async function telegramApi(method: string, payload: Record<string, unknown>) {
@@ -35,53 +32,53 @@ async function telegramApi(method: string, payload: Record<string, unknown>) {
   const response = await fetch(`https://api.telegram.org/bot${token}/${method}`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify(payload)
+    body: JSON.stringify(payload),
+    signal: AbortSignal.timeout(15_000)
   });
   const body = await response.json().catch(() => null);
-  if (!response.ok || !body?.ok) {
-    throw new Error(`${method} failed: ${JSON.stringify(body)}`);
-  }
+  if (!response.ok || !body?.ok) throw new Error(`${method} failed (${response.status})`);
   return body;
 }
 
-export async function GET(request: Request) {
-  if (!authorized(request)) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+export async function GET() {
+  return NextResponse.json(
+    { error: "Utilise POST avec une session administrateur ou le secret cron." },
+    { status: 405, headers: { Allow: "POST" } }
+  );
+}
 
+export async function POST(request: Request) {
+  if (!await authorized(request)) return jsonError("Accès administrateur requis.", 403);
   const token = process.env.TELEGRAM_BOT_TOKEN;
   const webhookSecret = process.env.TELEGRAM_WEBHOOK_SECRET;
   const base = process.env.APP_BASE_URL;
   if (!token || !webhookSecret || !base) {
-    return NextResponse.json({
-      error: "TELEGRAM_BOT_TOKEN, TELEGRAM_WEBHOOK_SECRET et APP_BASE_URL requis."
-    }, { status: 500 });
+    return jsonError("TELEGRAM_BOT_TOKEN, TELEGRAM_WEBHOOK_SECRET et APP_BASE_URL requis.", 503);
   }
-
   try {
     const normalizedBase = base.replace(/\/$/, "");
-    const [commands, webhook] = await Promise.all([
+    const webhookUrl = `${normalizedBase}/api/telegram/webhook`;
+    const [identity, commands, webhook] = await Promise.all([
+      telegramApi("getMe", {}),
       telegramApi("setMyCommands", { commands: TELEGRAM_COMMANDS }),
       telegramApi("setWebhook", {
-        url: `${normalizedBase}/api/telegram/webhook`,
+        url: webhookUrl,
         secret_token: webhookSecret,
-        allowed_updates: ["message", "callback_query"]
+        allowed_updates: ["message", "callback_query"],
+        drop_pending_updates: false
       })
     ]);
-
     return NextResponse.json({
       ok: true,
+      botUsername: identity.result?.username ?? null,
       commands: commands.ok,
       webhook: webhook.ok,
       commandCount: TELEGRAM_COMMANDS.length,
-      webhookUrl: `${normalizedBase}/api/telegram/webhook`,
+      webhookUrl,
       updatedAt: new Date().toISOString()
     });
   } catch (error) {
-    console.error("Configuration Telegram impossible:", error);
-    return NextResponse.json({
-      error: "Configuration Telegram impossible.",
-      details: error instanceof Error ? error.message : "Erreur inconnue"
-    }, { status: 500 });
+    console.error("Configuration Telegram impossible:", error instanceof Error ? error.message : "Erreur inconnue");
+    return jsonError("Configuration Telegram impossible.", 502);
   }
 }
