@@ -84,28 +84,51 @@ export async function POST(request: Request) {
   }
 
   const db = serviceDb();
-  const { data: processed } = await db
-    .from("billing_events").select("event_id").eq("event_id", event.id).maybeSingle();
-  if (processed) return NextResponse.json({ received: true, duplicate: true });
+  const { error: reservationError } = await db
+    .from("billing_events")
+    .insert({ event_id: event.id, event_type: event.type });
+  if (reservationError?.code === "23505") {
+    return NextResponse.json({ received: true, duplicate: true });
+  }
+  if (reservationError) {
+    console.error("Réservation événement Stripe impossible:", reservationError.message);
+    return NextResponse.json({ error: "Événement Stripe non enregistrable." }, { status: 500 });
+  }
 
-  if (
-    event.type === "customer.subscription.created" ||
-    event.type === "customer.subscription.updated" ||
-    event.type === "customer.subscription.deleted"
-  ) await syncSubscription(event.data.object as Stripe.Subscription);
-
-  if (event.type === "checkout.session.completed") {
-    const session = event.data.object as Stripe.Checkout.Session;
-    const userId = session.metadata?.app_user_id ?? session.client_reference_id;
-    const customerId = typeof session.customer === "string" ? session.customer : session.customer?.id;
-    if (userId && customerId) {
-      await db.from("users").update({ stripe_customer_id: customerId }).eq("id", userId);
+  try {
+    if (
+      event.type === "customer.subscription.created" ||
+      event.type === "customer.subscription.updated" ||
+      event.type === "customer.subscription.deleted"
+    ) {
+      await syncSubscription(event.data.object as Stripe.Subscription);
     }
-  }
-  if (event.type === "invoice.paid" || event.type === "invoice.payment_failed") {
-    await syncInvoice(event.data.object as Stripe.Invoice);
-  }
 
-  await db.from("billing_events").insert({ event_id: event.id, event_type: event.type });
-  return NextResponse.json({ received: true });
+    if (event.type === "checkout.session.completed") {
+      const session = event.data.object as Stripe.Checkout.Session;
+      const userId = session.metadata?.app_user_id ?? session.client_reference_id;
+      const customerId = typeof session.customer === "string"
+        ? session.customer
+        : session.customer?.id;
+      if (userId && customerId) {
+        const { error: userError } = await db
+          .from("users")
+          .update({ stripe_customer_id: customerId })
+          .eq("id", userId);
+        if (userError) throw userError;
+      }
+    }
+
+    if (event.type === "invoice.paid" || event.type === "invoice.payment_failed") {
+      await syncInvoice(event.data.object as Stripe.Invoice);
+    }
+    return NextResponse.json({ received: true });
+  } catch (error) {
+    await db.from("billing_events").delete().eq("event_id", event.id);
+    console.error(
+      "Traitement événement Stripe impossible:",
+      error instanceof Error ? error.message : "Erreur inconnue"
+    );
+    return NextResponse.json({ error: "Traitement Stripe impossible." }, { status: 500 });
+  }
 }
