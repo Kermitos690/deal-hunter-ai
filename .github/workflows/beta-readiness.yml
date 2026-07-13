@@ -20,7 +20,7 @@ concurrency:
 jobs:
   quality-and-inventory:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 30
     defaults:
       run:
         working-directory: saas
@@ -50,7 +50,7 @@ jobs:
             find saas/src/app -type f \( -name 'route.ts' -o -name 'page.tsx' -o -name 'layout.tsx' \) | sort
             echo
             echo "## Supabase migrations"
-            find saas/supabase/migrations -type f -maxdepth 1 | sort
+            find saas/supabase/migrations -maxdepth 1 -type f | sort
             echo
             echo "## Environment variable names referenced"
             grep -RhoE 'process\.env\.[A-Z0-9_]+' saas/src saas/scripts | sed 's/process\.env\.//' | sort -u || true
@@ -72,16 +72,36 @@ jobs:
         run: npm ci
 
       - name: Lint
-        run: npm run lint
+        id: lint
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -o pipefail
+          npm run lint 2>&1 | tee lint.log
 
       - name: Typecheck
-        run: npm run typecheck
+        id: typecheck
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -o pipefail
+          npm run typecheck 2>&1 | tee typecheck.log
 
       - name: Unit tests
-        run: npm run test
+        id: tests
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -o pipefail
+          npm run test 2>&1 | tee tests.log
 
       - name: Production build
-        run: npm run build
+        id: build
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -o pipefail
+          npm run build 2>&1 | tee build.log
 
       - name: Upload beta audit
         if: always()
@@ -90,6 +110,25 @@ jobs:
           name: deal-hunter-beta-audit-${{ github.run_id }}
           path: |
             beta-audit.txt
+            saas/lint.log
+            saas/typecheck.log
+            saas/tests.log
+            saas/build.log
             saas/coverage
           if-no-files-found: ignore
           retention-days: 7
+
+      - name: Enforce quality gate
+        if: always()
+        shell: bash
+        env:
+          LINT_OUTCOME: ${{ steps.lint.outcome }}
+          TYPECHECK_OUTCOME: ${{ steps.typecheck.outcome }}
+          TESTS_OUTCOME: ${{ steps.tests.outcome }}
+          BUILD_OUTCOME: ${{ steps.build.outcome }}
+        run: |
+          printf 'lint=%s typecheck=%s tests=%s build=%s\n' "$LINT_OUTCOME" "$TYPECHECK_OUTCOME" "$TESTS_OUTCOME" "$BUILD_OUTCOME"
+          test "$LINT_OUTCOME" = success
+          test "$TYPECHECK_OUTCOME" = success
+          test "$TESTS_OUTCOME" = success
+          test "$BUILD_OUTCOME" = success
