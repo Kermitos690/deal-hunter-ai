@@ -1,0 +1,63 @@
+name: Deal Hunter SaaS CI
+
+on:
+  pull_request:
+    paths:
+      - "saas/**"
+      - ".github/workflows/saas-ci.yml"
+  push:
+    branches:
+      - main
+      - "agent/**"
+    paths:
+      - "saas/**"
+      - ".github/workflows/saas-ci.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deal-hunter-saas-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: saas
+    env:
+      NEXT_PUBLIC_SUPABASE_URL: https://example.supabase.co
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ci-anon-key
+      SUPABASE_SERVICE_ROLE_KEY: ci-service-role-key
+      SESSION_SECRET: ci-session-secret-with-at-least-32-characters
+      APP_BASE_URL: http://localhost:3000
+      ENABLE_MOCK_SOURCE: "false"
+      ENABLE_EBAY_SOURCE: "false"
+      ENABLE_YAHOO_JAPAN_SOURCE: "false"
+      ENABLE_RSS_SOURCE: "false"
+      ENABLE_EMAIL_ALERTS_SOURCE: "false"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: saas/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Production build
+        run: npm run build
