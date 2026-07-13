@@ -1,11 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import { env } from "@/lib/env";
-
-const USER_PRODUCT_CONFLICT_TABLES = new Set([
-  "saved_deals",
-  "rejected_products",
-  "auction_reminders"
-]);
+import { normalizeUpsertOptions, type UpsertOptions } from "@/lib/db/upsert-conflicts";
 
 /**
  * Server-only Supabase client.
@@ -16,7 +11,7 @@ const USER_PRODUCT_CONFLICT_TABLES = new Set([
  * "Action impossible" after a repeated Save/Reject/Reminder click.
  *
  * Keep the existing call sites backwards-compatible while forcing the correct
- * composite conflict target for these three tables.
+ * composite conflict target for the affected tables.
  */
 export function serviceDb() {
   const config = env();
@@ -29,14 +24,10 @@ export function serviceDb() {
   const originalFrom = client.from.bind(client);
   (client as any).from = (table: string) => {
     const builder = originalFrom(table) as any;
-    if (!USER_PRODUCT_CONFLICT_TABLES.has(table)) return builder;
-
     const originalUpsert = builder.upsert.bind(builder);
-    builder.upsert = (values: unknown, options?: Record<string, unknown>) =>
-      originalUpsert(values, {
-        ...options,
-        onConflict: options?.onConflict ?? "user_id,product_id"
-      });
+
+    builder.upsert = (values: unknown, options?: UpsertOptions) =>
+      originalUpsert(values, normalizeUpsertOptions(table, options));
 
     return builder;
   };
