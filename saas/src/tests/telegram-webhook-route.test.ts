@@ -29,12 +29,12 @@ vi.mock("@/lib/api", () => ({
 
 import { POST } from "@/app/api/telegram/webhook/route";
 
-function telegramRequest(updateId = 123) {
+function telegramRequest(updateId = 123, secret = "test-webhook-secret") {
   return new Request("http://localhost/api/telegram/webhook", {
     method: "POST",
     headers: {
       "content-type": "application/json",
-      "x-telegram-bot-api-secret-token": "test-webhook-secret"
+      "x-telegram-bot-api-secret-token": secret
     },
     body: JSON.stringify({ update_id: updateId, message: { text: "/start" } })
   });
@@ -48,6 +48,28 @@ describe("Telegram webhook idempotency", () => {
     mocks.deleteEq.mockReset();
     mocks.insert.mockResolvedValue({ error: null });
     mocks.deleteEq.mockResolvedValue({ error: null });
+  });
+
+  it("rejects forged webhook requests before accessing the database", async () => {
+    const response = await POST(telegramRequest(123, "wrong-secret"));
+
+    expect(response.status).toBe(401);
+    expect(mocks.insert).not.toHaveBeenCalled();
+  });
+
+  it("rejects oversized webhook requests", async () => {
+    const response = await POST(new Request("http://localhost/api/telegram/webhook", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "content-length": "600000",
+        "x-telegram-bot-api-secret-token": "test-webhook-secret"
+      },
+      body: "{}"
+    }));
+
+    expect(response.status).toBe(413);
+    expect(mocks.insert).not.toHaveBeenCalled();
   });
 
   it("releases the update claim when Telegraf fails so Telegram can retry", async () => {
