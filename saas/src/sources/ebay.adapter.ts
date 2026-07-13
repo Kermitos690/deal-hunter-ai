@@ -17,6 +17,20 @@ type EbaySearchOptions = {
   sellers?: string[];
 };
 
+type EbaySearchPlanItem = {
+  query: string;
+  marketplace: string;
+  priority: boolean;
+  sellers: string[];
+};
+
+type EbaySearchResult = {
+  items: ProductCandidate[];
+  error: string | null;
+};
+
+let cachedAccessToken: { value: string; expiresAt: number } | null = null;
+
 function searchable(value: string) {
   return value.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase();
 }
@@ -33,6 +47,43 @@ function unique(values: string[]) {
     seen.add(key);
     return true;
   });
+}
+
+function boundedInteger(value: string | undefined, fallback: number, minimum: number, maximum: number) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.min(maximum, Math.max(minimum, Math.trunc(parsed)));
+}
+
+function requestTimeoutMs() {
+  return boundedInteger(process.env.EBAY_REQUEST_TIMEOUT_MS, 10_000, 2_000, 30_000);
+}
+
+function requestConcurrency() {
+  return boundedInteger(process.env.EBAY_REQUEST_CONCURRENCY, 4, 1, 10);
+}
+
+function maximumRequestsPerScan() {
+  return boundedInteger(process.env.EBAY_MAX_REQUESTS_PER_SCAN, 48, 1, 120);
+}
+
+async function mapWithConcurrency<T, R>(items: T[], concurrency: number, worker: (item: T, index: number) => Promise<R>) {
+  const results = new Array<R>(items.length);
+  let nextIndex = 0;
+  async function runWorker() {
+    while (true) {
+      const index = nextIndex++;
+      if (index >= items.length) return;
+      results[index] = await worker(items[index], index);
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(concurrency, items.length) }, () => runWorker()));
+  return results;
+}
+
+function errorMessage(error: unknown) {
+  if (error instanceof DOMException && error.name === "TimeoutError") return "timeout";
+  return error instanceof Error ? error.message : "erreur inconnue";
 }
 
 export function inferRadarBrand(title: string, brands: string[]) {
@@ -56,6 +107,10 @@ export function ebayConditionGrade(condition?: string) {
 }
 
 async function accessToken() {
+  if (cachedAccessToken && cachedAccessToken.expiresAt > Date.now() + 60_000) {
+    return cachedAccessToken.value;
+  }
+
   const id = process.env.EBAY_CLIENT_ID;
   const secret = process.env.EBAY_CLIENT_SECRET;
   if (!id || !secret) throw new Error("Identifiants eBay manquants.");
@@ -65,14 +120,22 @@ async function accessToken() {
       Authorization: `Basic ${Buffer.from(`${id}:${secret}`).toString("base64")}`,
       "Content-Type": "application/x-www-form-urlencoded"
     },
-    body: "grant_type=client_credentials&scope=https://api.ebay.com/oauth/api_scope"
+    body: "grant_type=client_credentials&scope=https://api.ebay.com/oauth/api_scope",
+    signal: AbortSignal.timeout(requestTimeoutMs()),
+    cache: "no-store"
   });
-  if (!response.ok) throw new Error(`OAuth eBay: ${response.status}`);
-  return (await response.json()).access_token as string;
+  if (!response.ok) throw new Error(`OAuth eBay: HTTP ${response.status}`);
+  const body = await response.json() as { access_token?: string; expires_in?: number };
+  if (!body.access_token) throw new Error("OAuth eBay: jeton absent.");
+  cachedAccessToken = {
+    value: body.access_token,
+    expiresAt: Date.now() + Math.max(60, Number(body.expires_in ?? 7_200)) * 1_000
+  };
+  return body.access_token;
 }
 
 export function ebayPriorityEnabled() {
-  return process.env.ENABLE_EBAY_PRIORITY_SOURCE !== "false";
+  return process.env.ENABLE_EBAY_PRIORITY_SOURCE === "true";
 }
 
 export function ebayPrioritySourceUrls() {
@@ -175,71 +238,84 @@ export const ebayAdapter: SourceAdapter = {
       .split(",").map((value) => value.trim()).filter(Boolean);
     const prioritySellers = ebayPrioritySellers();
     const prioritySourceUrls = ebayPrioritySourceUrls();
-    const searchPlan = [
-      ...(ebayPriorityEnabled()
-        ? searches.flatMap((query) => priorityMarketplaces(marketplaces).flatMap((marketplace) => [
-          ...(prioritySellers.length ? [{ query, marketplace, priority: true, sellers: prioritySellers }] : []),
-          { query, marketplace, priority: true, sellers: [] }
-        ]))
-        : []),
-      ...searches.flatMap((query) => marketplaces.map((marketplace) => ({ query, marketplace, priority: false, sellers: [] })))
-    ];
-    const expectedTerms = [...radar.brands, ...radar.models, ...radar.include_keywords];
-    const resultGroups = await Promise.all(searchPlan.map(async ({ query, marketplace, priority, sellers }) => {
-      const response = await fetch(
-        ebaySearchUrl(query, { priority, sellers }),
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-            "X-EBAY-C-MARKETPLACE-ID": marketplace,
-            "X-EBAY-C-ENDUSERCTX": ebayEndUserContextHeader()
-          }
-        }
-      );
-      if (!response.ok) {
-        console.warn(`Recherche eBay ${marketplace}${priority ? " prioritaire" : ""}${sellers.length ? " vendeurs Japon" : ""}: ${response.status}`);
-        return [];
-      }
-      const body = await response.json();
-      return (body.itemSummaries ?? [])
-      .filter((item: Record<string, any>) => isRelevantEbayListing(String(item.title), radar.category, expectedTerms))
-      .filter((item: Record<string, any>) => !priority || !sellers.length || isPriorityJapanCandidate(item))
-      .map(
-      (item: Record<string, any>): ProductCandidate => ({
-        source: "ebay",
-        sourceItemId: String(item.itemId),
-        title: String(item.title),
-        brand: inferRadarBrand(String(item.title), radar.brands),
-        category: radar.category,
-        priceAmount: Number(item.price?.value ?? 0),
-        priceCurrency: String(item.price?.currency ?? "CHF"),
-        buyNowPrice: Number(item.price?.value ?? 0),
-        currentBidPrice: item.buyingOptions?.includes("AUCTION") ? Number(item.currentBidPrice?.value ?? item.price?.value ?? 0) : undefined,
-        saleType: item.buyingOptions?.includes("AUCTION") ? "AUCTION" : "BUY_NOW",
-        auctionEndAt: item.buyingOptions?.includes("AUCTION") ? item.itemEndDate : undefined,
-        shippingCost: Number(item.shippingOptions?.[0]?.shippingCost?.value ?? 0),
-        conditionText: item.condition,
-        conditionGrade: ebayConditionGrade(item.condition),
-        sellerName: item.seller?.username,
-        sellerRating: String(item.seller?.feedbackPercentage ?? ""),
-        itemCountry: item.itemLocation?.country,
-        sellerCountry: item.itemLocation?.country,
-        productUrl: String(item.itemWebUrl),
-        imageUrls: [item.image?.imageUrl, ...(item.additionalImages ?? []).map((x: any) => x.imageUrl)].filter(Boolean),
-        rawPayload: {
-          ...item,
-          marketplace,
-          internalPriorityEbaySource: priority,
-          internalPrioritySellers: sellers,
-          internalPrioritySourceUrls: priority ? prioritySourceUrls : undefined,
-          internalPriorityDeliveryCountry: process.env.EBAY_DELIVERY_COUNTRY ?? "CH",
-          internalPriorityAuthenticityOriented: priority && isAuthenticityOrientedEbayTitle(String(item.title ?? "")),
-          internalSearchQuery: query
-        }
-      })
+    const priorityPlan: EbaySearchPlanItem[] = ebayPriorityEnabled()
+      ? searches.flatMap((query) => priorityMarketplaces(marketplaces).flatMap((marketplace) => [
+        ...(prioritySellers.length ? [{ query, marketplace, priority: true, sellers: prioritySellers }] : []),
+        { query, marketplace, priority: true, sellers: [] }
+      ]))
+      : [];
+    const regularPlan: EbaySearchPlanItem[] = searches.flatMap((query) =>
+      marketplaces.map((marketplace) => ({ query, marketplace, priority: false, sellers: [] }))
     );
-    }));
-    const results = sortPriorityFirst(resultGroups.flat());
+    const searchPlan = [...priorityPlan, ...regularPlan].slice(0, maximumRequestsPerScan());
+    const expectedTerms = [...radar.brands, ...radar.models, ...radar.include_keywords];
+
+    const resultGroups = await mapWithConcurrency(searchPlan, requestConcurrency(), async ({ query, marketplace, priority, sellers }): Promise<EbaySearchResult> => {
+      try {
+        const response = await fetch(
+          ebaySearchUrl(query, { priority, sellers }),
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+              "X-EBAY-C-MARKETPLACE-ID": marketplace,
+              "X-EBAY-C-ENDUSERCTX": ebayEndUserContextHeader()
+            },
+            signal: AbortSignal.timeout(requestTimeoutMs()),
+            cache: "no-store"
+          }
+        );
+        if (!response.ok) {
+          return { items: [], error: `HTTP ${response.status}` };
+        }
+        const body = await response.json();
+        const items = (body.itemSummaries ?? [])
+          .filter((item: Record<string, any>) => isRelevantEbayListing(String(item.title), radar.category, expectedTerms))
+          .filter((item: Record<string, any>) => !priority || !sellers.length || isPriorityJapanCandidate(item))
+          .map((item: Record<string, any>): ProductCandidate => ({
+            source: "ebay",
+            sourceItemId: String(item.itemId),
+            title: String(item.title),
+            brand: inferRadarBrand(String(item.title), radar.brands),
+            category: radar.category,
+            priceAmount: Number(item.price?.value ?? 0),
+            priceCurrency: String(item.price?.currency ?? "CHF"),
+            buyNowPrice: Number(item.price?.value ?? 0),
+            currentBidPrice: item.buyingOptions?.includes("AUCTION") ? Number(item.currentBidPrice?.value ?? item.price?.value ?? 0) : undefined,
+            saleType: item.buyingOptions?.includes("AUCTION") ? "AUCTION" : "BUY_NOW",
+            auctionEndAt: item.buyingOptions?.includes("AUCTION") ? item.itemEndDate : undefined,
+            shippingCost: Number(item.shippingOptions?.[0]?.shippingCost?.value ?? 0),
+            conditionText: item.condition,
+            conditionGrade: ebayConditionGrade(item.condition),
+            sellerName: item.seller?.username,
+            sellerRating: String(item.seller?.feedbackPercentage ?? ""),
+            itemCountry: item.itemLocation?.country,
+            sellerCountry: item.itemLocation?.country,
+            productUrl: String(item.itemWebUrl),
+            imageUrls: [item.image?.imageUrl, ...(item.additionalImages ?? []).map((x: any) => x.imageUrl)].filter(Boolean),
+            rawPayload: {
+              ...item,
+              marketplace,
+              internalPriorityEbaySource: priority,
+              internalPrioritySellers: sellers,
+              internalPrioritySourceUrls: priority ? prioritySourceUrls : undefined,
+              internalPriorityDeliveryCountry: process.env.EBAY_DELIVERY_COUNTRY ?? "CH",
+              internalPriorityAuthenticityOriented: priority && isAuthenticityOrientedEbayTitle(String(item.title ?? "")),
+              internalSearchQuery: query
+            }
+          }));
+        return { items, error: null };
+      } catch (error) {
+        return { items: [], error: errorMessage(error) };
+      }
+    });
+
+    const successfulRequests = resultGroups.filter((result) => !result.error);
+    if (!successfulRequests.length) {
+      const errors = [...new Set(resultGroups.map((result) => result.error).filter(Boolean))].slice(0, 5);
+      throw new Error(`Toutes les requêtes eBay ont échoué: ${errors.join("; ") || "erreur inconnue"}`);
+    }
+
+    const results = sortPriorityFirst(resultGroups.flatMap((result) => result.items));
     return [...new Map(results.map((item) => [item.sourceItemId, item])).values()];
   }
 };

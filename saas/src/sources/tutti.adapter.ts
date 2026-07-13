@@ -142,7 +142,7 @@ async function detailCandidate(card: SearchCard, radar: Radar): Promise<ProductC
 
 export const tuttiAdapter: SourceAdapter = {
   name: "tutti",
-  enabled: process.env.ENABLE_TUTTI_SOURCE !== "false",
+  enabled: process.env.ENABLE_TUTTI_SOURCE === "true",
   async scan(radar) {
     if (!this.enabled) return [];
     const queries = radar.brands.length

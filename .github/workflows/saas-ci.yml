@@ -1,0 +1,99 @@
+name: Deal Hunter SaaS CI
+
+on:
+  pull_request:
+    paths:
+      - "saas/**"
+      - "docs/**"
+      - "vercel.json"
+      - ".github/workflows/saas-ci.yml"
+      - ".github/workflows/radar-scheduler.yml"
+  push:
+    branches:
+      - main
+      - "agent/**"
+    paths:
+      - "saas/**"
+      - "docs/**"
+      - "vercel.json"
+      - ".github/workflows/saas-ci.yml"
+      - ".github/workflows/radar-scheduler.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deal-hunter-saas-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: saas
+    env:
+      NEXT_PUBLIC_SUPABASE_URL: https://example.supabase.co
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ci-anon-key
+      SUPABASE_SERVICE_ROLE_KEY: ci-service-role-key
+      SESSION_SECRET: ci-session-secret-with-at-least-32-characters
+      APP_BASE_URL: http://localhost:3000
+      BETA_PRIVATE_MODE: "true"
+      ENABLE_STRIPE: "false"
+      ENABLE_WHATSAPP: "false"
+      ENABLE_MOCK_SOURCE: "false"
+      ENABLE_EBAY_SOURCE: "false"
+      ENABLE_EBAY_PRIORITY_SOURCE: "false"
+      ENABLE_RICARDO_SOURCE: "false"
+      ENABLE_ANIBIS_SOURCE: "false"
+      ENABLE_TUTTI_SOURCE: "false"
+      ENABLE_KOMEHYO_SOURCE: "false"
+      ENABLE_YAHOO_JAPAN_SOURCE: "false"
+      ENABLE_RSS_SOURCE: "false"
+      ENABLE_EMAIL_ALERTS_SOURCE: "false"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: saas/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint 2>&1 | tee lint.log
+
+      - name: Typecheck
+        run: |
+          set -o pipefail
+          npm run typecheck 2>&1 | tee typecheck.log
+
+      - name: Unit tests
+        run: |
+          set -o pipefail
+          npm test 2>&1 | tee tests.log
+
+      - name: Production build
+        run: |
+          set -o pipefail
+          npm run build 2>&1 | tee build.log
+
+      - name: Upload CI diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: deal-hunter-ci-diagnostics-${{ github.run_id }}
+          path: |
+            saas/lint.log
+            saas/typecheck.log
+            saas/tests.log
+            saas/build.log
+          if-no-files-found: ignore
+          retention-days: 7

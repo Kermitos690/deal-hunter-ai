@@ -4,6 +4,9 @@ type YandexTranslateResponse = {
   translations?: Array<{ text?: string; detectedLanguageCode?: string }>;
 };
 
+const YANDEX_TRANSLATE_TIMEOUT_MS = 5_000;
+const MAX_TRANSLATION_CACHE_ENTRIES = 500;
+
 export function yandexTranslateConfigured() {
   return Boolean(process.env.YANDEX_TRANSLATE_API_KEY && process.env.YANDEX_TRANSLATE_FOLDER_ID);
 }
@@ -28,7 +31,8 @@ export async function translateWithYandex(
       texts: [text],
       sourceLanguageCode: source,
       targetLanguageCode: target
-    })
+    }),
+    signal: AbortSignal.timeout(YANDEX_TRANSLATE_TIMEOUT_MS)
   });
 
   if (!response.ok) {
@@ -41,6 +45,14 @@ export async function translateWithYandex(
 
 const translationCache = new Map<string, string>();
 
+function cacheTranslation(key: string, value: string) {
+  if (translationCache.size >= MAX_TRANSLATION_CACHE_ENTRIES) {
+    const oldestKey = translationCache.keys().next().value as string | undefined;
+    if (oldestKey) translationCache.delete(oldestKey);
+  }
+  translationCache.set(key, value);
+}
+
 export async function translateTelegramText(text: string, targetLanguage: TelegramLanguage) {
   const target = normalizeTelegramLanguage(targetLanguage);
   if (target === "fr" || !yandexTranslateConfigured()) return text;
@@ -49,11 +61,10 @@ export async function translateTelegramText(text: string, targetLanguage: Telegr
   if (cached) return cached;
   try {
     const translated = await translateWithYandex(text, target, "fr");
-    translationCache.set(key, translated);
+    cacheTranslation(key, translated);
     return translated;
   } catch (error) {
     console.error("Traduction Yandex indisponible:", error instanceof Error ? error.message : "Erreur inconnue");
     return text;
   }
 }
-

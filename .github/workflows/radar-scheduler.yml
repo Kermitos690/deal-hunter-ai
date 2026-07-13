@@ -16,40 +16,66 @@ jobs:
   scan:
     runs-on: ubuntu-latest
     timeout-minutes: 12
+    env:
+      CRON_SECRET: ${{ secrets.CRON_SECRET }}
+      APP_BASE_URL: ${{ secrets.APP_BASE_URL || 'https://deal-hunter-ai.vercel.app' }}
+
     steps:
+      - name: Validate scheduler configuration
+        run: |
+          set -euo pipefail
+          test -n "${CRON_SECRET}" || { echo "CRON_SECRET is missing" >&2; exit 1; }
+          case "${APP_BASE_URL}" in
+            https://*) ;;
+            *) echo "APP_BASE_URL must use HTTPS" >&2; exit 1 ;;
+          esac
+
       - name: Run due radars
-        env:
-          CRON_SECRET: ${{ secrets.CRON_SECRET }}
-          APP_BASE_URL: ${{ secrets.APP_BASE_URL || 'https://deal-hunter-ai.vercel.app' }}
+        id: scans
         run: |
           set -euo pipefail
           base_url="${APP_BASE_URL%/}"
-          response="$(curl --fail --silent --show-error --retry 2 --max-time 360 \
+          response="$(curl --fail-with-body --silent --show-error \
+            --retry 2 --retry-delay 2 --retry-connrefused --max-time 360 \
             -H "Authorization: Bearer ${CRON_SECRET}" \
             "${base_url}/api/cron/scan")"
           printf '%s\n' "$response"
           printf '%s' "$response" | jq -e '(.results | type == "array") and all(.results[]?; .ok == true)'
+          total="$(printf '%s' "$response" | jq '.results | length')"
+          failed="$(printf '%s' "$response" | jq '[.results[]? | select(.ok != true)] | length')"
+          {
+            echo "### Radar scans"
+            echo "- Results: ${total}"
+            echo "- Failed: ${failed}"
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Run auction reminders
-        env:
-          CRON_SECRET: ${{ secrets.CRON_SECRET }}
-          APP_BASE_URL: ${{ secrets.APP_BASE_URL || 'https://deal-hunter-ai.vercel.app' }}
+        id: reminders
         run: |
           set -euo pipefail
           base_url="${APP_BASE_URL%/}"
-          curl --fail --silent --show-error --retry 2 --max-time 120 \
+          response="$(curl --fail-with-body --silent --show-error \
+            --retry 2 --retry-delay 2 --retry-connrefused --max-time 120 \
             -H "Authorization: Bearer ${CRON_SECRET}" \
-            "${base_url}/api/cron/reminders"
+            "${base_url}/api/cron/reminders")"
+          printf '%s\n' "$response"
+          printf '%s' "$response" | jq -e 'type == "object" or type == "array"'
+          echo "### Auction reminders" >> "$GITHUB_STEP_SUMMARY"
+          echo '- Endpoint completed successfully.' >> "$GITHUB_STEP_SUMMARY"
 
       - name: Run email alert fast lane
-        env:
-          CRON_SECRET: ${{ secrets.CRON_SECRET }}
-          APP_BASE_URL: ${{ secrets.APP_BASE_URL || 'https://deal-hunter-ai.vercel.app' }}
+        id: email_alerts
         run: |
           set -euo pipefail
           base_url="${APP_BASE_URL%/}"
-          response="$(curl --fail --silent --show-error --retry 2 --max-time 240 \
+          response="$(curl --fail-with-body --silent --show-error \
+            --retry 2 --retry-delay 2 --retry-connrefused --max-time 240 \
             -H "Authorization: Bearer ${CRON_SECRET}" \
             "${base_url}/api/cron/email-alerts")"
           printf '%s\n' "$response"
           printf '%s' "$response" | jq -e '(.results | type == "array") and all(.results[]?; .ok == true)'
+          total="$(printf '%s' "$response" | jq '.results | length')"
+          {
+            echo "### Email alert fast lane"
+            echo "- Results: ${total}"
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { tuttiAdapter } from "@/sources/tutti.adapter";
 import type { Radar } from "@/types";
 
@@ -34,9 +34,22 @@ const radar: Radar = {
   is_active: true
 };
 
+const originalEnabled = tuttiAdapter.enabled;
+
 describe("Tutti source", () => {
+  beforeEach(() => {
+    // The adapter is disabled by default in production. These unit tests enable
+    // the isolated adapter instance explicitly without changing environment defaults.
+    tuttiAdapter.enabled = true;
+  });
+
+  afterEach(() => {
+    tuttiAdapter.enabled = originalEnabled;
+    vi.restoreAllMocks();
+  });
+
   it("ne retourne que les annonces détail actives avec prix", async () => {
-    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async (url) => {
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (url) => {
       const href = String(url);
       if (href.includes("/fr/q?query=")) {
         return new Response(`
@@ -72,11 +85,10 @@ describe("Tutti source", () => {
       saleType: "BUY_NOW"
     });
     expect(items[0].rawPayload?.activeVerified).toBe(true);
-    fetchMock.mockRestore();
   });
 
   it("rejette les pages détail vendues ou supprimées", async () => {
-    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async (url) => {
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (url) => {
       const href = String(url);
       if (href.includes("/fr/q?query=")) {
         return new Response(`
@@ -89,6 +101,5 @@ describe("Tutti source", () => {
       return new Response("<html><body><h1>Omega</h1><span>499.-</span>Déjà vendu</body></html>");
     });
     await expect(tuttiAdapter.scan(radar)).resolves.toEqual([]);
-    fetchMock.mockRestore();
   });
 });

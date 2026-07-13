@@ -2,5 +2,9 @@
   "framework": "nextjs",
   "installCommand": "cd saas && npm ci",
   "buildCommand": "cd saas && npm run build",
-  "outputDirectory": "saas/.next"
+  "outputDirectory": "saas/.next",
+  "crons": [
+    { "path": "/api/cron/scan", "schedule": "0 5 * * *" },
+    { "path": "/api/cron/reminders", "schedule": "0 6 * * *" }
+  ]
 }

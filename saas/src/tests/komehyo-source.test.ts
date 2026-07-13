@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { komehyoAdapter, komehyoConditionGrade, parseKomehyoHtml } from "@/sources/komehyo.adapter";
 import { radar } from "./fixtures";
 
@@ -17,7 +17,21 @@ const fixture = `
   </li>
 </ul>`;
 
+const originalEnabled = komehyoAdapter.enabled;
+
 describe("source KOMEHYO", () => {
+  beforeEach(() => {
+    // Production remains opt-in. The parser/network behavior is enabled only
+    // for this isolated adapter test instance.
+    komehyoAdapter.enabled = true;
+  });
+
+  afterEach(() => {
+    komehyoAdapter.enabled = originalEnabled;
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
   it("normalise les rangs japonais", () => {
     expect(komehyoConditionGrade("新品")).toBe("NEW");
     expect(komehyoConditionGrade("ランク：中古品A")).toBe("A");
@@ -52,6 +66,5 @@ describe("source KOMEHYO", () => {
     });
     expect(items).toHaveLength(1);
     expect(items[0].sourceItemId).toBe("4054980");
-    vi.unstubAllGlobals();
   });
 });

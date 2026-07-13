@@ -110,7 +110,7 @@ async function detailCandidate(url: string, radar: Radar): Promise<ProductCandid
 
 export const ricardoAdapter: SourceAdapter = {
   name: "ricardo",
-  enabled: process.env.ENABLE_RICARDO_SOURCE !== "false",
+  enabled: process.env.ENABLE_RICARDO_SOURCE === "true",
   async scan(radar) {
     if (!this.enabled) return [];
     const queries = radar.brands.length

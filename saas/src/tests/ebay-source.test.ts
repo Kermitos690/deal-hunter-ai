@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import {
   ebayConditionGrade,
   ebayEndUserContextHeader,
@@ -20,6 +20,13 @@ const watchRadar = {
 };
 
 describe("source eBay", () => {
+  afterEach(() => {
+    delete process.env.ENABLE_EBAY_PRIORITY_SOURCE;
+    delete process.env.EBAY_DELIVERY_COUNTRY;
+    delete process.env.EBAY_PRIORITY_SOURCE_URLS;
+    delete process.env.EBAY_PRIORITY_SELLERS;
+  });
+
   it("normalise les états eBay", () => {
     expect(ebayConditionGrade("New with tags")).toBe("NEW");
     expect(ebayConditionGrade("Pre-owned - Good")).toBe("B");
@@ -46,8 +53,14 @@ describe("source eBay", () => {
     expect(queries.every((query) => query.endsWith("watch"))).toBe(true);
   });
 
-  it("prépare une recherche eBay prioritaire interne sans créer de source visible", () => {
+  it("garde la passe prioritaire désactivée par défaut", () => {
+    expect(ebayPriorityEnabled()).toBe(false);
+    process.env.ENABLE_EBAY_PRIORITY_SOURCE = "true";
     expect(ebayPriorityEnabled()).toBe(true);
+  });
+
+  it("prépare une recherche eBay prioritaire interne sans créer de source visible", () => {
+    process.env.ENABLE_EBAY_PRIORITY_SOURCE = "true";
     expect(ebaySearchUrl("Seiko vintage watch")).toContain("q=Seiko+vintage+watch");
     expect(ebaySearchUrl("Seiko vintage watch", true)).toContain("sort=newlyListed");
     expect(ebaySearchUrl("Seiko vintage watch", { priority: true, sellers: ["tatsuen", "akiakiehgsjusov"] }))
