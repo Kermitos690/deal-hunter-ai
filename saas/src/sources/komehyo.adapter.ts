@@ -82,7 +82,7 @@ export function parseKomehyoHtml(
 
 export const komehyoAdapter: SourceAdapter = {
   name: "komehyo",
-  enabled: process.env.ENABLE_KOMEHYO_SOURCE !== "false",
+  enabled: process.env.ENABLE_KOMEHYO_SOURCE === "true",
   async scan(radar) {
     if (!this.enabled) return [];
     const queries = radar.brands.length
