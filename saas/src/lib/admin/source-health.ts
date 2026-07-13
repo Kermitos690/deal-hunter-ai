@@ -58,6 +58,12 @@ export function configuredSources() {
   const emailReady = Boolean(process.env.EMAIL_IMAP_SERVER && process.env.EMAIL_ADDRESS && process.env.EMAIL_APP_PASSWORD);
   const rssReady = Boolean(process.env.PUBLIC_FEED_URLS);
   const yahooReady = Boolean(process.env.YAHOO_JAPAN_CLIENT_ID);
+  const whatsappReady = Boolean(
+    process.env.WHATSAPP_ACCESS_TOKEN &&
+    process.env.WHATSAPP_PHONE_NUMBER_ID &&
+    process.env.WHATSAPP_VERIFY_TOKEN &&
+    process.env.WHATSAPP_APP_SECRET
+  );
   return [
     {
       source: "mock",
@@ -108,8 +114,10 @@ export function configuredSources() {
     },
     {
       source: "whatsapp",
-      status: process.env.WHATSAPP_ACCESS_TOKEN && process.env.WHATSAPP_PHONE_NUMBER_ID ? "configured" as const : "disabled" as const,
-      detail: "Canal d’alerte, pas une source de produits"
+      status: configured(process.env.ENABLE_WHATSAPP, whatsappReady),
+      detail: whatsappReady
+        ? "Canal signé Meta configuré; test réel requis"
+        : "Canal d’alerte désactivé ou configuration Meta incomplète"
     },
     { source: "stockx", status: "not_developed" as const, detail: "Non développé" }
   ];
