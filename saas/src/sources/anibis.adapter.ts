@@ -105,7 +105,7 @@ async function detailCandidate(url: string, radar: Radar): Promise<ProductCandid
 
 export const anibisAdapter: SourceAdapter = {
   name: "anibis",
-  enabled: process.env.ENABLE_ANIBIS_SOURCE !== "false",
+  enabled: process.env.ENABLE_ANIBIS_SOURCE === "true",
   async scan(radar) {
     if (!this.enabled) return [];
     const queries = radar.brands.length
