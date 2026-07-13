@@ -7,12 +7,16 @@ export function DashboardNav({ user }: { user: AppUser }) {
     ["/dashboard", "Vue générale"],
     ["/dashboard/radars", "Radars"],
     ["/dashboard/deals", "Deals"],
+    ...(process.env.ENABLE_CHANNELS === "true" ? [["/dashboard/channels", "Canaux"]] : []),
     ["/dashboard/performance", "Performance"],
     ["/dashboard/alerts", "Alertes"],
     ...(process.env.ENABLE_REFERRALS === "true" ? [["/dashboard/referrals", "Parrainage"]] : []),
     ["/dashboard/settings", "Réglages"]
   ];
-  if (user.role === "admin") links.push(["/admin", "Administration"]);
+  if (user.role === "admin") {
+    links.push(["/admin", "Administration"]);
+    if (process.env.ENABLE_CHANNELS === "true") links.push(["/admin/channels", "Admin canaux"]);
+  }
   return <aside className="border-b border-white/10 bg-panel/70 p-5 lg:min-h-screen lg:w-64 lg:border-b-0 lg:border-r">
     <Link href="/" className="text-xl font-black">DEAL HUNTER <span className="text-mint">AI</span></Link>
     <div className="mt-2 text-xs text-slate-500">{user.display_name} • {user.plan}</div>
