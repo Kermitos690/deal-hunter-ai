@@ -7,8 +7,10 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
 async function runDueScansWithReferralRefresh() {
-  const { error } = await serviceDb().rpc("refresh_referral_entitlements");
-  if (error) throw new Error(`Referral entitlement refresh failed: ${error.message}`);
+  if (process.env.ENABLE_REFERRALS === "true") {
+    const { error } = await serviceDb().rpc("refresh_referral_entitlements");
+    if (error) throw new Error(`Referral entitlement refresh failed: ${error.message}`);
+  }
   return runDueScans();
 }
 
