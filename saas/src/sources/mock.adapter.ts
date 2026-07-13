@@ -101,7 +101,7 @@ function matches(radar: Radar, item: ProductCandidate) {
 
 export const mockAdapter: SourceAdapter = {
   name: "mock",
-  enabled: process.env.ENABLE_MOCK_SOURCE !== "false",
+  enabled: process.env.ENABLE_MOCK_SOURCE === "true",
   async scan(radar) {
     return mockCandidates.filter((item) => matches(radar, item));
   }
