@@ -7,6 +7,7 @@ export function DashboardNav({ user }: { user: AppUser }) {
     ["/dashboard", "Vue générale"],
     ["/dashboard/radars", "Radars"],
     ["/dashboard/deals", "Deals"],
+    ...(process.env.ENABLE_CHANNELS === "true" ? [["/dashboard/channels", "Canaux"]] : []),
     ["/dashboard/performance", "Performance"],
     ["/dashboard/alerts", "Alertes"],
     ...(process.env.ENABLE_REFERRALS === "true" ? [["/dashboard/referrals", "Parrainage"]] : []),
