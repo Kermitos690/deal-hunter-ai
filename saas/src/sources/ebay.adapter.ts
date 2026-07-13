@@ -67,6 +67,10 @@ function maximumRequestsPerScan() {
   return boundedInteger(process.env.EBAY_MAX_REQUESTS_PER_SCAN, 48, 1, 120);
 }
 
+function maximumCandidatesPerScan() {
+  return boundedInteger(process.env.EBAY_MAX_CANDIDATES_PER_SCAN, 60, 10, 250);
+}
+
 async function mapWithConcurrency<T, R>(items: T[], concurrency: number, worker: (item: T, index: number) => Promise<R>) {
   const results = new Array<R>(items.length);
   let nextIndex = 0;
@@ -316,6 +320,7 @@ export const ebayAdapter: SourceAdapter = {
     }
 
     const results = sortPriorityFirst(resultGroups.flatMap((result) => result.items));
-    return [...new Map(results.map((item) => [item.sourceItemId, item])).values()];
+    const uniqueResults = [...new Map(results.map((item) => [item.sourceItemId, item])).values()];
+    return uniqueResults.slice(0, maximumCandidatesPerScan());
   }
 };
