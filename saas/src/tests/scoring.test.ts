@@ -21,12 +21,12 @@ describe("calculateDealScore", () => {
     expect(result.totalScore).toBeLessThanOrEqual(100);
     expect(result.estimatedNetProfit).toBeGreaterThan(0);
     expect(["BUY", "NEGOTIATE", "WATCH", "AVOID"]).toContain(result.recommendation);
-    expect(result.scoringVersion).toBe("v5");
+    expect(result.scoringVersion).toBe("v6");
     expect(result.reasons.join(" ")).toContain("Calcul : achat");
     expect(result.reasons.join(" ")).toContain("Preuve");
   });
 
-  it("ne recommande pas un achat avec une confiance faible", () => {
+  it("ne recommande pas un achat sans vente conclue", () => {
     const result = calculateDealScore(mockCandidates[0], radar, {
       low: 400,
       median: 500,
@@ -38,9 +38,10 @@ describe("calculateDealScore", () => {
       notes: [],
       comparableDetails: []
     });
-    expect(result.totalScore).toBeLessThan(55);
+    expect(result.totalScore).toBeLessThanOrEqual(64);
     expect(["WATCH", "AVOID"]).toContain(result.recommendation);
     expect(result.warnings.join(" ")).toContain("Confiance marché faible");
+    expect(result.warnings.join(" ")).toContain("Aucune vente conclue suffisamment proche");
   });
 
   it("plafonne une annonce à forte apparence de ROI mais marge absolue dérisoire", () => {
