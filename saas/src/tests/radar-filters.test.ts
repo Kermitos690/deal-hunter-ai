@@ -63,6 +63,18 @@ describe("radar filters", () => {
     expect(candidateMatchesRadar(rolexCandidate("Rolex GMT-Master II catalogue 2024"), radarRolex)).toBe(false);
   });
 
+  it("rejette les verres et cristaux de montre même si le titre contient watch", () => {
+    const seikoRadar = configured({ category: "Montres", brands: ["Seiko"] });
+    expect(candidateMatchesRadar(
+      rolexCandidate("Assortment Crystal SEIKO Original NOS Vintage Watch Glass"),
+      seikoRadar
+    )).toBe(false);
+    expect(candidateMatchesRadar(
+      rolexCandidate("Replacement Watch Crystal for Seiko 6139"),
+      seikoRadar
+    )).toBe(false);
+  });
+
   it("applique photos et états", () => {
     const candidate = { ...mockCandidates[0], imageUrls: [] };
     expect(candidateMatchesRadar(candidate, configured({ photos_required:true }))).toBe(false);
