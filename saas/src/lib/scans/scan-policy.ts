@@ -1,4 +1,4 @@
-export const SCAN_LOCK_TTL_SECONDS = 15 * 60;
+export const SCAN_LOCK_TTL_SECONDS = 7 * 60;
 
 export function userCanRunActivity(status?: string | null) {
   return status === "active";
