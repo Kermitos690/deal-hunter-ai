@@ -23,16 +23,19 @@ export function estimatedLandedCost(candidate: ProductCandidate, radar: Radar) {
   return subtotal + subtotal * radar.vat_rate;
 }
 
-export function radarDiscoveryMode(radar: Radar) {
-  return radar.min_profit <= 1;
+// Kept for compatibility with callers, but discovery behavior must be explicit
+// in the product model. A low profit threshold must never silently disable the
+// score and ROI thresholds shown to the user.
+export function radarDiscoveryMode(_radar: Radar) {
+  return false;
 }
 
 export function effectiveMinScore(radar: Radar) {
-  return radarDiscoveryMode(radar) ? 0 : radar.min_score;
+  return radar.min_score;
 }
 
 export function effectiveMinRoiPercent(radar: Radar) {
-  return radarDiscoveryMode(radar) ? 0 : radar.min_roi_percent;
+  return radar.min_roi_percent;
 }
 
 export function candidateMismatchReasons(candidate: ProductCandidate, radar: Radar) {
