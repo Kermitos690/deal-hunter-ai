@@ -14,7 +14,7 @@ describe("scan policy", () => {
     expect(lockIsExpired("2026-07-04T11:59:59Z", now)).toBe(true);
     expect(lockIsExpired("2026-07-04T12:00:01Z", now)).toBe(false);
     expect(lockIsExpired("date-invalide", now)).toBe(true);
-    expect(SCAN_LOCK_TTL_SECONDS).toBe(900);
+    expect(SCAN_LOCK_TTL_SECONDS).toBe(420);
   });
 
   it("déclenche le fallback eBay si toutes les sources live choisies échouent", () => {
