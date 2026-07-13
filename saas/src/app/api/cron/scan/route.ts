@@ -3,7 +3,7 @@ import { runScheduledJob } from "@/lib/cron/run-scheduled-job";
 import { runDueScans } from "@/lib/scans/run-radar-scan";
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 360;
+export const maxDuration = 300;
 
 export async function GET(request: Request) {
   if (!process.env.CRON_SECRET || request.headers.get("authorization") !== `Bearer ${process.env.CRON_SECRET}`) {
