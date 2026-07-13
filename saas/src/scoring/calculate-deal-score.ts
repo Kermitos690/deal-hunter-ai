@@ -2,6 +2,7 @@ import type { DealScore, MarketEstimate, ProductCandidate, Radar } from "@/types
 import { analyzeRisk } from "./analyze-risk";
 import { buildDealActionPlan } from "./action-plan";
 import { professionalDecision } from "./decision-framework";
+import { absoluteProfitScoreCap, pokemonScoreWarnings } from "@/lib/tcg/pokemon";
 
 const conditionScores = { NEW: 95, A: 88, B: 72, C: 48, REPAIR: 30, UNKNOWN: 35 };
 const clamp = (value: number) => Math.max(0, Math.min(100, Math.round(value)));
@@ -66,9 +67,11 @@ export function calculateDealScore(
       conditionScore * 0.12 +
       urgencyScore * 0.08
   );
-  const totalScore = market.confidence === "LOW" && market.comparableCount < 8
+  const confidenceCappedScore = market.confidence === "LOW" && market.comparableCount < 8
     ? Math.min(rawTotalScore, 54)
     : rawTotalScore;
+  const profitCap = absoluteProfitScoreCap(estimatedNetProfit);
+  const totalScore = Math.min(confidenceCappedScore, profitCap);
   const recommendation =
     totalScore >= 85
       ? "BUY"
@@ -111,6 +114,10 @@ export function calculateDealScore(
   if (market.confidence === "LOW") {
     warnings.push("Confiance marché faible : ne pas traiter comme un achat automatique.");
   }
+  if (profitCap < confidenceCappedScore) {
+    warnings.push(`Score plafonné à ${profitCap}/100 car la marge nette absolue est trop faible (${estimatedNetProfit.toFixed(0)} CHF).`);
+  }
+  warnings.push(...pokemonScoreWarnings(candidate));
   warnings.push(...market.notes.slice(0, 3));
 
   return {
@@ -133,7 +140,7 @@ export function calculateDealScore(
     decisionStatus: decision.decisionStatus,
     decisionRationale: decision.decisionRationale,
     recommendation: finalRecommendation,
-    scoringVersion: "v4",
+    scoringVersion: "v5",
     marketConfidence: market.confidence,
     comparableCount: market.comparableCount,
     reasons,

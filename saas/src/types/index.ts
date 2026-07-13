@@ -78,6 +78,7 @@ export interface ProductCandidate {
   imageUrls: string[];
   description?: string;
   rawPayload?: Record<string, unknown>;
+  verticalAttributes?: Record<string, unknown>;
 }
 
 export interface MarketEstimate {
@@ -128,7 +129,7 @@ export interface DealScore {
   decisionStatus?: "APPROVED" | "CONDITIONAL" | "REVIEW_REQUIRED" | "REJECTED";
   decisionRationale?: string;
   recommendation: Recommendation;
-  scoringVersion: "v2" | "v3" | "v4";
+  scoringVersion: "v2" | "v3" | "v4" | "v5";
   marketConfidence: MarketConfidence;
   comparableCount: number;
   reasons: string[];
