@@ -1,5 +1,6 @@
 import type { DealScore, ProductCandidate } from "@/types";
 import { decisionLabel } from "@/scoring/decision-framework";
+import { pokemonAlertLines } from "@/lib/tcg/pokemon";
 
 const money = (value: number) => `${value.toFixed(0)} CHF`;
 
@@ -17,6 +18,8 @@ export function formatTelegramAlert(candidate: ProductCandidate, score: DealScor
     : "• Aucun signal critique automatique. Vérification humaine requise.";
   const status = score.decisionStatus ?? "REVIEW_REQUIRED";
   const signal = recommendationLabel[score.recommendation] ?? score.recommendation;
+  const verticalDetails = pokemonAlertLines(candidate);
+  const verticalBlock = verticalDetails.length ? `\n${verticalDetails.join("\n")}` : "";
   return `DEAL HUNTER AI — NOTE D’OPPORTUNITÉ
 
 DÉCISION : ${decisionLabel[status]}
@@ -24,7 +27,7 @@ NIVEAU DE PREUVE : ${score.evidenceGrade ?? "D"}
 ${score.decisionRationale ?? "Analyse humaine complémentaire requise."}
 
 👜 Produit : ${candidate.title}
-🏷️ Marque : ${candidate.brand ?? "Non précisée"}
+🏷️ Marque : ${candidate.brand ?? "Non précisée"}${verticalBlock}
 🌍 Source : ${candidate.source}
 💰 Prix : ${money(candidate.priceAmount)}
 🚚 Coût estimé livré : ${money(score.estimatedBuyCost)}
