@@ -3,9 +3,73 @@ import { formatTelegramAlert } from "./format-alert";
 import { serviceDb } from "@/lib/db/server";
 import type { DealScore, ProductCandidate, Radar } from "@/types";
 
+export type TelegramFailureReason =
+  | "telegram_token_missing"
+  | "telegram_forbidden"
+  | "telegram_bad_request"
+  | "telegram_rate_limited"
+  | "telegram_api_error";
+
 export type TelegramAlertResult =
   | { messageId: string; skipped: false; reason?: never }
-  | { messageId: null; skipped: true; reason: "telegram_token_missing" };
+  | { messageId: null; skipped: true; reason: TelegramFailureReason };
+
+type TelegramErrorShape = {
+  code?: number;
+  response?: {
+    error_code?: number;
+    description?: string;
+    parameters?: { retry_after?: number };
+  };
+  message?: string;
+};
+
+function telegramErrorCode(error: unknown) {
+  const shape = error as TelegramErrorShape | null;
+  return Number(shape?.response?.error_code ?? shape?.code ?? 0);
+}
+
+function telegramRetryAfterMs(error: unknown) {
+  const shape = error as TelegramErrorShape | null;
+  const seconds = Number(shape?.response?.parameters?.retry_after ?? 0);
+  return Number.isFinite(seconds) && seconds > 0 ? Math.min(seconds * 1000, 5000) : 0;
+}
+
+export function classifyTelegramFailure(error: unknown): TelegramFailureReason {
+  const code = telegramErrorCode(error);
+  const description = String((error as TelegramErrorShape | null)?.response?.description ?? (error as Error | null)?.message ?? "").toLowerCase();
+  if (code === 403 || /bot was blocked|forbidden|user is deactivated/.test(description)) return "telegram_forbidden";
+  if (code === 400) return "telegram_bad_request";
+  if (code === 429) return "telegram_rate_limited";
+  return "telegram_api_error";
+}
+
+function isTransientTelegramFailure(error: unknown) {
+  const code = telegramErrorCode(error);
+  if (code === 429 || code >= 500) return true;
+  const message = String((error as Error | null)?.message ?? "").toLowerCase();
+  return /timeout|timed out|econnreset|econnrefused|fetch failed|network|socket/.test(message);
+}
+
+async function pause(ms: number) {
+  await new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function sendWithRetry<T>(operation: () => Promise<T>, maxAttempts = 3): Promise<{ ok: true; value: T } | { ok: false; reason: TelegramFailureReason }> {
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      return { ok: true, value: await operation() };
+    } catch (error) {
+      lastError = error;
+      if (!isTransientTelegramFailure(error) || attempt === maxAttempts) break;
+      await pause(telegramRetryAfterMs(error) || Math.min(250 * 2 ** (attempt - 1), 1000));
+    }
+  }
+  const reason = classifyTelegramFailure(lastError);
+  console.error("Échec envoi Telegram:", reason);
+  return { ok: false, reason };
+}
 
 export function dealAlertKeyboard(alertId: string, productUrl: string, hasAuctionEnd: boolean) {
   const actionRows = [
@@ -76,7 +140,7 @@ export async function sendScanDigest(
     "",
     "_scan-digest-v1_"
   ].join("\n");
-  const message = await bot.telegram.sendMessage(telegramId, text, {
+  const sent = await sendWithRetry(() => bot.telegram.sendMessage(telegramId, text, {
     reply_markup: {
       inline_keyboard: [
         [{ text: "🔥 Top deals", callback_data: "inbox:top" }],
@@ -84,8 +148,10 @@ export async function sendScanDigest(
         [{ text: "📡 Mes radars", callback_data: "list_radars" }, { text: "📥 Inbox", callback_data: "inbox" }]
       ]
     }
-  });
-  return { messageId: String(message.message_id), skipped: false };
+  }));
+  return sent.ok
+    ? { messageId: String(sent.value.message_id), skipped: false }
+    : { messageId: null, skipped: true, reason: sent.reason };
 }
 
 export async function sendDealAlert(
@@ -100,18 +166,14 @@ export async function sendDealAlert(
   const buttons = dealAlertKeyboard(alertId, candidate.productUrl, Boolean(candidate.auctionEndAt));
   const text = formatTelegramAlert(candidate, score);
   const photo = candidate.imageUrls[0];
-  let message;
-  try {
-    message = photo
-      ? await bot.telegram.sendPhoto(telegramId, photo, {
-          caption: text.slice(0, 1000),
-          reply_markup: buttons
-        })
-      : await bot.telegram.sendMessage(telegramId, text, { reply_markup: buttons });
-  } catch (error) {
-    console.error("Échec envoi alerte Telegram:", error instanceof Error ? error.message : "Erreur inconnue");
-    throw error;
-  }
+  const sent = await sendWithRetry(() => photo
+    ? bot.telegram.sendPhoto(telegramId, photo, {
+        caption: text.slice(0, 1000),
+        reply_markup: buttons
+      })
+    : bot.telegram.sendMessage(telegramId, text, { reply_markup: buttons }));
+  if (!sent.ok) return { messageId: null, skipped: true, reason: sent.reason };
+
   if (candidate.auctionEndAt) {
     await serviceDb().from("telegram_sessions").upsert({
       telegram_id: telegramId,
@@ -119,14 +181,15 @@ export async function sendDealAlert(
       payload: {},
       updated_at: new Date().toISOString()
     });
-    await bot.telegram.sendMessage(
+    const followUp = await sendWithRetry(() => bot.telegram.sendMessage(
       telegramId,
       "⏰ Enchère détectée. Réponds A pour un rappel 1h avant la fin, B pour ignorer.",
       { reply_markup: { inline_keyboard: [[
         { text: "A — Rappel 1h avant", callback_data: `remind:${alertId}` },
         { text: "B — Pas de rappel", callback_data: `noremind:${alertId}` }
       ]] } }
-    );
+    ));
+    if (!followUp.ok) console.warn("Message de suivi enchère non envoyé:", followUp.reason);
   }
-  return { messageId: String(message.message_id), skipped: false };
+  return { messageId: String(sent.value.message_id), skipped: false };
 }
