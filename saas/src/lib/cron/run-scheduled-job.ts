@@ -9,7 +9,7 @@ type ScheduledJobResult<T> = {
   errorCount: number;
 };
 
-function summarizeResult(result: unknown) {
+export function summarizeScheduledResult(result: unknown) {
   if (Array.isArray(result)) {
     return {
       resultCount: result.length,
@@ -22,9 +22,13 @@ function summarizeResult(result: unknown) {
     const record = result as Record<string, unknown>;
     const processed = Number(record.processed ?? 0);
     const skipped = Number(record.skipped ?? 0);
+    const failed = Number(record.failed ?? 0);
+    const safeProcessed = Number.isFinite(processed) ? processed : 0;
+    const safeSkipped = Number.isFinite(skipped) ? skipped : 0;
+    const safeFailed = Number.isFinite(failed) ? failed : 0;
     return {
-      resultCount: (Number.isFinite(processed) ? processed : 0) + (Number.isFinite(skipped) ? skipped : 0),
-      errorCount: 0
+      resultCount: safeProcessed + safeSkipped + safeFailed,
+      errorCount: safeFailed
     };
   }
   return { resultCount: 0, errorCount: 0 };
@@ -44,7 +48,7 @@ export async function runScheduledJob<T>(job: ScheduledJobName, operation: () =>
 
   try {
     const results = await operation();
-    const summary = summarizeResult(results);
+    const summary = summarizeScheduledResult(results);
     const status = summary.errorCount > 0 ? "degraded" : "success";
     if (journal?.id) {
       const { error } = await db.from("scheduler_runs").update({
