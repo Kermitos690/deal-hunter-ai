@@ -1,15 +1,26 @@
 import { describe, expect, it } from "vitest";
-import { normalizeUpsertOptions } from "@/lib/db/upsert-conflicts";
+import {
+  normalizeUpsertOptions,
+  USER_PRODUCT_CONFLICT_TARGET
+} from "@/lib/db/upsert-conflicts";
 
 describe("composite upsert conflict targets", () => {
   it.each(["saved_deals", "rejected_products", "auction_reminders"])(
-    "uses the user/product unique key for %s",
+    "uses the user/product unique key for repeated writes to %s",
     (table) => {
       expect(normalizeUpsertOptions(table)).toEqual({
-        onConflict: "user_id,product_id"
+        onConflict: USER_PRODUCT_CONFLICT_TARGET
       });
     }
   );
+
+  it("keeps a second Telegram reject idempotent", () => {
+    const firstReject = normalizeUpsertOptions("rejected_products");
+    const secondReject = normalizeUpsertOptions("rejected_products");
+
+    expect(firstReject).toEqual(secondReject);
+    expect(secondReject.onConflict).toBe("user_id,product_id");
+  });
 
   it("preserves an explicit conflict target", () => {
     expect(

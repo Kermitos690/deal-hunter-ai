@@ -1,3 +1,5 @@
+export const USER_PRODUCT_CONFLICT_TARGET = "user_id,product_id";
+
 const USER_PRODUCT_CONFLICT_TABLES = new Set([
   "saved_deals",
   "rejected_products",
@@ -18,6 +20,6 @@ export function normalizeUpsertOptions(
 
   return {
     ...options,
-    onConflict: "user_id,product_id"
+    onConflict: USER_PRODUCT_CONFLICT_TARGET
   };
 }
