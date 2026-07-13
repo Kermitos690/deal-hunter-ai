@@ -1,4 +1,4 @@
-import type { DealScore, MarketEstimate, ProductCandidate, Radar } from "@/types";
+import type { DealScore, MarketEstimate, ProductCandidate, Radar, Recommendation } from "@/types";
 import { analyzeRisk } from "./analyze-risk";
 import { buildDealActionPlan } from "./action-plan";
 import { professionalDecision } from "./decision-framework";
@@ -80,7 +80,7 @@ export function calculateDealScore(
       : rawTotalScore;
   const profitCap = absoluteProfitScoreCap(estimatedNetProfit);
   const totalScore = Math.min(evidenceCappedScore, profitCap);
-  const recommendation =
+  const recommendation: Recommendation =
     totalScore >= 85
       ? "BUY"
       : totalScore >= 70
@@ -90,7 +90,7 @@ export function calculateDealScore(
           : "AVOID";
   const actionPlan = buildDealActionPlan(candidate, radar, market.median, market.confidence);
   const respectsOfferDiscipline = candidate.priceAmount <= actionPlan.maximumOffer;
-  let finalRecommendation = !respectsOfferDiscipline && recommendation === "BUY"
+  let finalRecommendation: Recommendation = !respectsOfferDiscipline && recommendation === "BUY"
     ? "NEGOTIATE"
     : !respectsOfferDiscipline && recommendation === "NEGOTIATE"
       ? "WATCH"
