@@ -3,7 +3,7 @@ name: Activate Deal Hunter growth features
 on:
   push:
     branches:
-      - ops/activate-growth-features
+      - main
     paths:
       - .github/workflows/activate-growth-features.yml
   workflow_dispatch:
@@ -31,7 +31,7 @@ jobs:
       - name: Checkout main code and activation workflow
         uses: actions/checkout@v4
         with:
-          ref: ops/activate-growth-features
+          ref: main
 
       - name: Validate production credentials
         shell: bash
