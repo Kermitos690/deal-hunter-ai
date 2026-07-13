@@ -15,6 +15,7 @@ const schema = z.object({
   SESSION_SECRET: z.string().min(32),
   BETA_PRIVATE_MODE: booleanFlag.default("true"),
   ENABLE_STRIPE: booleanFlag.default("false"),
+  ENABLE_WHATSAPP: booleanFlag.default("false"),
   ENABLE_MOCK_SOURCE: booleanFlag.default("false"),
   ENABLE_EBAY_SOURCE: booleanFlag.default("false"),
   ENABLE_EBAY_PRIORITY_SOURCE: booleanFlag.default("false"),
@@ -47,6 +48,7 @@ const schema = z.object({
   WHATSAPP_ACCESS_TOKEN: z.string().optional(),
   WHATSAPP_PHONE_NUMBER_ID: z.string().optional(),
   WHATSAPP_VERIFY_TOKEN: z.string().optional(),
+  WHATSAPP_APP_SECRET: z.string().optional(),
   WHATSAPP_GRAPH_VERSION: z.string().default("v23.0"),
   YANDEX_TRANSLATE_API_KEY: z.string().optional(),
   YANDEX_TRANSLATE_FOLDER_ID: z.string().optional(),
@@ -81,6 +83,9 @@ export function productionConfigurationWarnings() {
   }
   if (process.env.ENABLE_STRIPE === "true" && (!process.env.STRIPE_SECRET_KEY || !process.env.STRIPE_WEBHOOK_SECRET || !process.env.STRIPE_PRO_PRICE_ID || !process.env.STRIPE_BUSINESS_PRICE_ID)) {
     warnings.push("stripe_enabled_without_complete_configuration");
+  }
+  if (process.env.ENABLE_WHATSAPP === "true" && (!process.env.WHATSAPP_ACCESS_TOKEN || !process.env.WHATSAPP_PHONE_NUMBER_ID || !process.env.WHATSAPP_VERIFY_TOKEN || !process.env.WHATSAPP_APP_SECRET)) {
+    warnings.push("whatsapp_enabled_without_complete_configuration");
   }
   if (process.env.STRIPE_SECRET_KEY && !process.env.STRIPE_WEBHOOK_SECRET) warnings.push("stripe_missing_webhook_secret");
   if (process.env.TELEGRAM_BOT_TOKEN && !process.env.TELEGRAM_WEBHOOK_SECRET) warnings.push("telegram_missing_webhook_secret");
