@@ -14,6 +14,7 @@ const schema = z.object({
   CRON_SECRET: z.string().min(16).optional(),
   SESSION_SECRET: z.string().min(32),
   BETA_PRIVATE_MODE: booleanFlag.default("true"),
+  ENABLE_STRIPE: booleanFlag.default("false"),
   ENABLE_MOCK_SOURCE: booleanFlag.default("false"),
   ENABLE_EBAY_SOURCE: booleanFlag.default("false"),
   ENABLE_EBAY_PRIORITY_SOURCE: booleanFlag.default("false"),
@@ -77,6 +78,9 @@ export function productionConfigurationWarnings() {
   }
   if (process.env.ENABLE_EMAIL_ALERTS_SOURCE === "true" && (!process.env.EMAIL_IMAP_SERVER || !process.env.EMAIL_ADDRESS || !process.env.EMAIL_APP_PASSWORD)) {
     warnings.push("email_alerts_enabled_without_complete_imap");
+  }
+  if (process.env.ENABLE_STRIPE === "true" && (!process.env.STRIPE_SECRET_KEY || !process.env.STRIPE_WEBHOOK_SECRET || !process.env.STRIPE_PRO_PRICE_ID || !process.env.STRIPE_BUSINESS_PRICE_ID)) {
+    warnings.push("stripe_enabled_without_complete_configuration");
   }
   if (process.env.STRIPE_SECRET_KEY && !process.env.STRIPE_WEBHOOK_SECRET) warnings.push("stripe_missing_webhook_secret");
   if (process.env.TELEGRAM_BOT_TOKEN && !process.env.TELEGRAM_WEBHOOK_SECRET) warnings.push("telegram_missing_webhook_secret");
