@@ -1,0 +1,255 @@
+name: Activate Deal Hunter growth features
+
+on:
+  push:
+    branches:
+      - ops/activate-growth-features
+    paths:
+      - .github/workflows/activate-growth-features.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deal-hunter-production-activation
+  cancel-in-progress: false
+
+jobs:
+  activate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+      SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+
+    steps:
+      - name: Checkout main code and activation workflow
+        uses: actions/checkout@v4
+        with:
+          ref: ops/activate-growth-features
+
+      - name: Validate production credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          missing=()
+          for name in \
+            SUPABASE_ACCESS_TOKEN \
+            SUPABASE_PROJECT_REF \
+            SUPABASE_DB_PASSWORD \
+            VERCEL_TOKEN \
+            VERCEL_ORG_ID \
+            VERCEL_PROJECT_ID
+          do
+            if [ -z "${!name:-}" ]; then
+              missing+=("$name")
+            fi
+          done
+
+          if [ "${#missing[@]}" -gt 0 ]; then
+            {
+              echo "## Activation blocked safely"
+              echo
+              echo "The following GitHub Actions secrets are missing:"
+              for name in "${missing[@]}"; do echo "- \`$name\`"; done
+              echo
+              echo "No migration, environment change, or deployment was attempted."
+            } >> "$GITHUB_STEP_SUMMARY"
+            printf 'Missing required secret: %s\n' "${missing[@]}" >&2
+            exit 1
+          fi
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: saas/package-lock.json
+
+      - name: Verify migration allowlist
+        shell: bash
+        run: |
+          set -euo pipefail
+          expected=(
+            "20260713233000_referral_free_months.sql"
+            "20260713233500_referral_stripe_claims.sql"
+            "20260713234000_referral_entitlement_refresh.sql"
+            "20260713235500_channels_and_sponsored_placements.sql"
+          )
+          for migration in "${expected[@]}"; do
+            test -f "saas/supabase/migrations/$migration" || {
+              echo "Expected migration missing: $migration" >&2
+              exit 1
+            }
+          done
+
+      - name: Install and identify deployment CLIs
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx --yes supabase@latest --version
+          npx --yes vercel@latest --version
+
+      - name: Link production Supabase project
+        working-directory: saas
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx --yes supabase@latest link \
+            --project-ref "$SUPABASE_PROJECT_REF" \
+            --password "$SUPABASE_DB_PASSWORD"
+
+      - name: Dry-run and guard pending migrations
+        working-directory: saas
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx --yes supabase@latest db push --linked --dry-run 2>&1 | tee /tmp/supabase-dry-run.txt
+
+          allowed='^(20260713233000_referral_free_months|20260713233500_referral_stripe_claims|20260713234000_referral_entitlement_refresh|20260713235500_channels_and_sponsored_placements)$'
+          unexpected="$({ grep -oE '[0-9]{14}_[A-Za-z0-9_]+' /tmp/supabase-dry-run.txt || true; } | sort -u | grep -Ev "$allowed" || true)"
+          if [ -n "$unexpected" ]; then
+            {
+              echo "## Migration guard stopped activation"
+              echo
+              echo "Unexpected pending migrations were detected:"
+              printf '%s\n' "$unexpected" | sed 's/^/- `/' | sed 's/$/`/'
+              echo
+              echo "Nothing was applied. Review migration history before retrying."
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "Unexpected pending migrations detected:" >&2
+            printf '%s\n' "$unexpected" >&2
+            exit 1
+          fi
+
+      - name: Apply allowlisted Supabase migrations
+        working-directory: saas
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx --yes supabase@latest db push --linked --yes
+
+      - name: Verify Supabase migration history
+        working-directory: saas
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx --yes supabase@latest migration list --linked 2>&1 | tee /tmp/supabase-migrations.txt
+          for version in 20260713233000 20260713233500 20260713234000 20260713235500; do
+            grep -q "$version" /tmp/supabase-migrations.txt || {
+              echo "Migration $version is not present in linked history." >&2
+              exit 1
+            }
+          done
+
+      - name: Link Vercel production project
+        working-directory: saas
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx --yes vercel@latest pull \
+            --yes \
+            --environment=production \
+            --token="$VERCEL_TOKEN"
+
+      - name: Determine whether referrals can be activated
+        id: referral_readiness
+        working-directory: saas
+        shell: bash
+        run: |
+          set -euo pipefail
+          stripe_ready="$(npx --yes vercel@latest env run \
+            --environment=production \
+            --token="$VERCEL_TOKEN" \
+            -- node -e 'const names=["STRIPE_SECRET_KEY","STRIPE_WEBHOOK_SECRET","STRIPE_PRO_PRICE_ID"]; const ok=process.env.ENABLE_STRIPE==="true" && names.every((name)=>Boolean(process.env[name])); process.stdout.write(ok?"true":"false")')"
+
+          if [ "$stripe_ready" = "true" ]; then
+            echo "enable_referrals=true" >> "$GITHUB_OUTPUT"
+            echo "Stripe production configuration is complete enough to expose referrals."
+          else
+            echo "enable_referrals=false" >> "$GITHUB_OUTPUT"
+            echo "Stripe is disabled or incomplete; referrals remain hidden to avoid a misleading reward promise."
+          fi
+
+      - name: Configure production feature flags
+        working-directory: saas
+        shell: bash
+        env:
+          ENABLE_REFERRALS_VALUE: ${{ steps.referral_readiness.outputs.enable_referrals }}
+        run: |
+          set -euo pipefail
+          set_env() {
+            local name="$1"
+            local value="$2"
+            printf '%s' "$value" | npx --yes vercel@latest env add \
+              "$name" production \
+              --force \
+              --token="$VERCEL_TOKEN" >/dev/null
+          }
+
+          set_env ENABLE_CHANNELS true
+          set_env ENABLE_SPONSORED_PLACEMENTS false
+          set_env SPONSORED_ON_PAID_PLANS false
+          set_env ENABLE_REFERRALS "$ENABLE_REFERRALS_VALUE"
+
+          {
+            echo "## Production feature flags"
+            echo "- Pokémon / TCG vertical: enabled by code"
+            echo "- Curated channels: enabled"
+            echo "- Sponsored placements: disabled pending campaign acceptance test"
+            echo "- Referrals: $ENABLE_REFERRALS_VALUE"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Run production quality gate
+        working-directory: saas
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm ci
+          npm run lint
+          npm run typecheck
+          npm run test
+          npm run build
+
+      - name: Deploy exactly once to Vercel production
+        id: deployment
+        working-directory: saas
+        shell: bash
+        run: |
+          set -euo pipefail
+          output="$(npx --yes vercel@latest \
+            --prod \
+            --yes \
+            --force \
+            --token="$VERCEL_TOKEN" 2>&1 | tee /tmp/vercel-deploy.txt)"
+          deployment_url="$(printf '%s\n' "$output" | grep -Eo 'https://[^ ]+\.vercel\.app' | tail -n 1)"
+          test -n "$deployment_url" || {
+            echo "Vercel did not return a production deployment URL." >&2
+            exit 1
+          }
+          echo "url=$deployment_url" >> "$GITHUB_OUTPUT"
+          echo "Production deployment: $deployment_url" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Production smoke tests
+        shell: bash
+        env:
+          DEPLOYMENT_URL: ${{ steps.deployment.outputs.url }}
+        run: |
+          set -euo pipefail
+          for url in "$DEPLOYMENT_URL" "https://deal-hunter-ai.vercel.app"; do
+            curl --fail-with-body --silent --show-error \
+              --retry 3 --retry-delay 5 --retry-connrefused \
+              --max-time 45 \
+              "$url/" >/dev/null
+          done
+          {
+            echo "## Smoke tests"
+            echo "- Immutable deployment URL: reachable"
+            echo "- Production alias: reachable"
+            echo "- No sponsored placement was enabled"
+          } >> "$GITHUB_STEP_SUMMARY"
