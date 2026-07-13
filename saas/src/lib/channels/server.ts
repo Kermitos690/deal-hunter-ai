@@ -198,6 +198,7 @@ export async function createSponsoredCampaign(adminUserId: string, input: Sponso
     status: "active"
   }).select("id").single();
   dbFailure("Création du sponsor", sponsorError);
+  if (!sponsor) throw new Error("Création du sponsor: résultat manquant.");
 
   const { data: campaign, error: campaignError } = await db.from("sponsored_campaigns").insert({
     sponsor_id: sponsor.id,
