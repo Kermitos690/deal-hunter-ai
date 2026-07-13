@@ -31,7 +31,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
           cache-dependency-path: saas/package-lock.json
 
@@ -114,7 +114,16 @@ jobs:
             saas/typecheck.log
             saas/tests.log
             saas/build.log
-            saas/coverage
+            saas/src
+            saas/supabase
+            saas/scripts
+            saas/package.json
+            saas/package-lock.json
+            saas/tsconfig.json
+            saas/next.config.*
+            saas/vercel.json
+            saas/.env.example
+            .github/workflows
           if-no-files-found: ignore
           retention-days: 7
 
