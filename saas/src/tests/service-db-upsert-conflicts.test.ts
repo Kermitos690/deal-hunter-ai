@@ -54,10 +54,10 @@ describe("serviceDb idempotent upserts", () => {
     });
   });
 
-  it("does not alter unrelated table upserts", () => {
+  it("does not add a conflict target to unrelated tables", () => {
     const values = { id: "alert-1", status: "rejected" };
     (serviceDb() as any).from("alerts").upsert(values);
 
-    expect(mocks.upsert).toHaveBeenCalledWith(values);
+    expect(mocks.upsert).toHaveBeenCalledWith(values, {});
   });
 });
