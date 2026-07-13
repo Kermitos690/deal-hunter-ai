@@ -1,7 +1,7 @@
 import { Telegraf } from "telegraf";
-import { formatTelegramAlert } from "./format-alert";
 import { serviceDb } from "@/lib/db/server";
 import type { DealScore, ProductCandidate, Radar } from "@/types";
+import { formatTelegramAlert } from "./format-alert";
 
 export type TelegramFailureReason =
   | "telegram_token_missing"
@@ -71,6 +71,20 @@ async function sendWithRetry<T>(operation: () => Promise<T>, maxAttempts = 3): P
   return { ok: false, reason };
 }
 
+export async function sendTelegramText(
+  telegramId: string,
+  text: string,
+  extra?: Record<string, unknown>
+): Promise<TelegramAlertResult> {
+  const token = process.env.TELEGRAM_BOT_TOKEN;
+  if (!token) return { messageId: null, skipped: true, reason: "telegram_token_missing" };
+  const bot = new Telegraf(token);
+  const sent = await sendWithRetry(() => bot.telegram.sendMessage(telegramId, text, extra as any));
+  return sent.ok
+    ? { messageId: String(sent.value.message_id), skipped: false }
+    : { messageId: null, skipped: true, reason: sent.reason };
+}
+
 export function dealAlertKeyboard(alertId: string, productUrl: string, hasAuctionEnd: boolean) {
   const actionRows = [
     [
@@ -126,9 +140,6 @@ export async function sendScanDigest(
   radar: Pick<Radar, "id" | "name">,
   result: { candidatesFound: number; alertsCreated: number; alertsSent: number; telegramSkipped?: number }
 ): Promise<TelegramAlertResult> {
-  const token = process.env.TELEGRAM_BOT_TOKEN;
-  if (!token) return { messageId: null, skipped: true, reason: "telegram_token_missing" };
-  const bot = new Telegraf(token);
   const text = [
     "📥 Nouveaux résultats prêts",
     "",
@@ -140,7 +151,7 @@ export async function sendScanDigest(
     "",
     "_scan-digest-v1_"
   ].join("\n");
-  const sent = await sendWithRetry(() => bot.telegram.sendMessage(telegramId, text, {
+  return sendTelegramText(telegramId, text, {
     reply_markup: {
       inline_keyboard: [
         [{ text: "🔥 Top deals", callback_data: "inbox:top" }],
@@ -148,10 +159,7 @@ export async function sendScanDigest(
         [{ text: "📡 Mes radars", callback_data: "list_radars" }, { text: "📥 Inbox", callback_data: "inbox" }]
       ]
     }
-  }));
-  return sent.ok
-    ? { messageId: String(sent.value.message_id), skipped: false }
-    : { messageId: null, skipped: true, reason: sent.reason };
+  });
 }
 
 export async function sendDealAlert(
@@ -181,15 +189,15 @@ export async function sendDealAlert(
       payload: {},
       updated_at: new Date().toISOString()
     });
-    const followUp = await sendWithRetry(() => bot.telegram.sendMessage(
+    const followUp = await sendTelegramText(
       telegramId,
       "⏰ Enchère détectée. Réponds A pour un rappel 1h avant la fin, B pour ignorer.",
       { reply_markup: { inline_keyboard: [[
         { text: "A — Rappel 1h avant", callback_data: `remind:${alertId}` },
         { text: "B — Pas de rappel", callback_data: `noremind:${alertId}` }
       ]] } }
-    ));
-    if (!followUp.ok) console.warn("Message de suivi enchère non envoyé:", followUp.reason);
+    );
+    if (followUp.skipped) console.warn("Message de suivi enchère non envoyé:", followUp.reason);
   }
   return { messageId: String(sent.value.message_id), skipped: false };
 }
