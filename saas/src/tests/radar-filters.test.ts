@@ -103,4 +103,17 @@ describe("radar filters", () => {
     expect(scoreMatchesRadar(score, configured({ min_profit:70 }))).toBe(false);
     expect(scoreMatchesRadar(score, configured({ min_roi_percent:25 }))).toBe(false);
   });
+
+  it("ne désactive jamais le score et le ROI quand la marge minimum vaut 1 CHF", () => {
+    const lowQualityDeal = {
+      totalScore:64,
+      estimatedNetProfit:4,
+      estimatedRoiPercent:10.3
+    } as DealScore;
+    expect(scoreMatchesRadar(lowQualityDeal, configured({
+      min_score:70,
+      min_profit:1,
+      min_roi_percent:15
+    }))).toBe(false);
+  });
 });
