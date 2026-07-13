@@ -4,8 +4,19 @@ import { serviceDb } from "@/lib/db/server";
 import { runRadarScan } from "@/lib/scans/run-radar-scan";
 import { scanResultText } from "@/telegram/scan-result-text";
 import { normalizeWhatsAppPhone, sendWhatsAppText } from "@/whatsapp/client";
+import { verifyWhatsAppSignature } from "@/whatsapp/webhook-security";
+
+export const dynamic = "force-dynamic";
+export const maxDuration = 120;
+
+const MAX_WEBHOOK_BYTES = 1_000_000;
+
+function whatsappEnabled() {
+  return process.env.ENABLE_WHATSAPP === "true";
+}
 
 export async function GET(request: Request) {
+  if (!whatsappEnabled()) return jsonError("Webhook WhatsApp désactivé.", 404);
   const url = new URL(request.url);
   const mode = url.searchParams.get("hub.mode");
   const token = url.searchParams.get("hub.verify_token");
@@ -115,32 +126,66 @@ async function handleMessage(message: WhatsAppMessage, displayName?: string) {
   if (dedupeError?.code === "23505") return;
   if (dedupeError) throw dedupeError;
 
-  if (message.type && message.type !== "text") {
-    await sendWhatsAppText(message.from, "Je comprends seulement les messages texte pour l’instant. Écris aide, radars ou scan.");
-    return;
-  }
+  try {
+    if (message.type && message.type !== "text") {
+      await sendWhatsAppText(message.from, "Je comprends seulement les messages texte pour l’instant. Écris aide, radars ou scan.");
+      return;
+    }
 
-  const user = await userForPhone(message.from, displayName);
-  const text = (message.text?.body ?? "").trim().toLowerCase();
+    const user = await userForPhone(message.from, displayName);
+    const text = (message.text?.body ?? "").trim().toLowerCase();
 
-  if (["start", "aide", "help", "menu", "bonjour", "salut"].includes(text)) {
+    if (["start", "aide", "help", "menu", "bonjour", "salut"].includes(text)) {
+      await replyHelp(message.from);
+      return;
+    }
+    if (text === "radars") {
+      await replyRadars(message.from, user.id);
+      return;
+    }
+    if (text === "scan") {
+      await replyScan(message.from, user.id);
+      return;
+    }
+
     await replyHelp(message.from);
-    return;
+  } catch (error) {
+    const { error: releaseError } = await db
+      .from("processed_whatsapp_messages")
+      .delete()
+      .eq("message_id", message.id);
+    if (releaseError) console.error("Impossible de libérer le message WhatsApp:", releaseError.message);
+    throw error;
   }
-  if (text === "radars") {
-    await replyRadars(message.from, user.id);
-    return;
-  }
-  if (text === "scan") {
-    await replyScan(message.from, user.id);
-    return;
-  }
-
-  await replyHelp(message.from);
 }
 
 export async function POST(request: Request) {
-  const payload = await request.json();
+  if (!whatsappEnabled()) return jsonError("Webhook WhatsApp désactivé.", 404);
+  const contentLength = Number(request.headers.get("content-length") ?? 0);
+  if (Number.isFinite(contentLength) && contentLength > MAX_WEBHOOK_BYTES) {
+    return jsonError("Payload WhatsApp trop volumineux.", 413);
+  }
+
+  const rawBody = await request.text();
+  if (Buffer.byteLength(rawBody, "utf8") > MAX_WEBHOOK_BYTES) {
+    return jsonError("Payload WhatsApp trop volumineux.", 413);
+  }
+  if (!verifyWhatsAppSignature(
+    rawBody,
+    request.headers.get("x-hub-signature-256"),
+    process.env.WHATSAPP_APP_SECRET
+  )) {
+    console.warn("Webhook WhatsApp refusé : signature invalide.");
+    return jsonError("Webhook WhatsApp refusé.", 401);
+  }
+
+  let payload: any;
+  try {
+    payload = JSON.parse(rawBody);
+  } catch {
+    return jsonError("Payload WhatsApp invalide.", 400);
+  }
+
   const messages = extractMessages(payload);
   const contacts = (payload.entry ?? []).flatMap((entry: any) =>
     (entry.changes ?? []).flatMap((change: any) => change.value?.contacts ?? [])
