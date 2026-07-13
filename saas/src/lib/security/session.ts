@@ -47,14 +47,19 @@ export async function currentUser(): Promise<AppUser | null> {
     telegramId = (await headers()).get("x-telegram-id");
   }
   if (!telegramId) return null;
+
+  const referralsEnabled = process.env.ENABLE_REFERRALS === "true";
+  const fields = referralsEnabled
+    ? "id,telegram_id,email,display_name,role,plan,status,alerts_enabled,stripe_customer_id,referral_code,referred_by_user_id,referral_months_earned,referral_access_until"
+    : "id,telegram_id,email,display_name,role,plan,status,alerts_enabled,stripe_customer_id";
   const { data } = await serviceDb()
     .from("users")
-    .select("id,telegram_id,email,display_name,role,plan,status,alerts_enabled,stripe_customer_id,referral_code,referred_by_user_id,referral_months_earned,referral_access_until")
+    .select(fields)
     .eq("telegram_id", telegramId)
     .maybeSingle();
   if (!data || data.status === "suspended") return null;
-  const user = data as AppUser;
-  return { ...user, plan: effectivePlanForUser(user) };
+  const user = data as unknown as AppUser;
+  return referralsEnabled ? { ...user, plan: effectivePlanForUser(user) } : user;
 }
 
 export async function requireUser() {
