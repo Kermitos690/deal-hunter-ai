@@ -174,12 +174,14 @@ export async function sendDealAlert(
   const buttons = dealAlertKeyboard(alertId, candidate.productUrl, Boolean(candidate.auctionEndAt));
   const text = formatTelegramAlert(candidate, score);
   const photo = candidate.imageUrls[0];
-  const sent = await sendWithRetry(() => photo
-    ? bot.telegram.sendPhoto(telegramId, photo, {
+  const sent = photo
+    ? await sendWithRetry(() => bot.telegram.sendPhoto(telegramId, photo, {
         caption: text.slice(0, 1000),
         reply_markup: buttons
-      })
-    : bot.telegram.sendMessage(telegramId, text, { reply_markup: buttons }));
+      }))
+    : await sendWithRetry(() => bot.telegram.sendMessage(telegramId, text, {
+        reply_markup: buttons
+      }));
   if (!sent.ok) return { messageId: null, skipped: true, reason: sent.reason };
 
   if (candidate.auctionEndAt) {
