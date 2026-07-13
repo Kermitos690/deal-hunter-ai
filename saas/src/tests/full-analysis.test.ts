@@ -5,6 +5,7 @@ const product = {
   title: "Vintage Seiko Slim Tank Quartz Red Dial 26MM Men's Watch H24",
   brand: "Seiko",
   model: null,
+  category: "Montres",
   source: "ebay",
   price_amount: 38,
   condition_grade: "UNKNOWN",
@@ -15,6 +16,7 @@ const product = {
 const score = {
   recommendation: "WATCH",
   total_score: 64,
+  scoring_version: "v6",
   estimated_buy_cost: 40,
   estimated_resale_price: 44,
   estimated_net_profit: 4,
@@ -36,7 +38,7 @@ describe("formatFullDealAnalysis", () => {
         price: 90,
         currency: "CHF",
         evidence_url: "https://example.com/ricardo-active",
-        match_score: 0.7
+        match_score: 0.75
       },
       {
         source: "ebay_sold",
@@ -50,11 +52,45 @@ describe("formatFullDealAnalysis", () => {
       }
     ]);
 
-    expect(report).toContain("1 vente(s) conclue(s) vérifiée(s)");
-    expect(report).toContain("1 annonce(s) active(s)");
+    expect(report).toContain("1 vente(s) conclue(s) suffisamment proche(s)");
+    expect(report).toContain("1 annonce(s) active(s) suffisamment proche(s)");
     expect(report).toContain("Ricardo : 0 vente(s) conclue(s), 1 annonce(s) active(s)");
     expect(report).toContain("✅ Vente conclue — eBay");
     expect(report).toContain("🟦 Annonce active — Ricardo 🇨🇭");
+  });
+
+  it("bloque le verdict achat lorsqu'il n'existe aucune vente conclue", () => {
+    const report = formatFullDealAnalysis(
+      product,
+      { ...score, recommendation: "BUY", total_score: 91, scoring_version: "v5" },
+      Array.from({ length: 5 }, (_, index) => ({
+        source: "ebay_active_listing",
+        evidence_type: "ACTIVE_LISTING",
+        title: `Seiko active ${index}`,
+        price: 70 + index,
+        currency: "CHF",
+        match_score: 0.8
+      }))
+    );
+
+    expect(report).toContain("À CONFIRMER — PAS D’ACHAT AUTOMATIQUE");
+    expect(report).toContain("Score technique historique : 91/100");
+    expect(report).toContain("Score calculé par v5");
+    expect(report).toContain("ne pas utiliser comme ordre d’achat");
+  });
+
+  it("écarte les comparables de montre sous 70 pour cent", () => {
+    const report = formatFullDealAnalysis(product, score, [
+      {
+        source: "ebay_active_listing",
+        title: "Seiko 7S26 unrelated",
+        price: 70,
+        currency: "CHF",
+        match_score: 0.5
+      }
+    ]);
+    expect(report).toContain("1 comparable(s) trop éloigné(s) exclu(s)");
+    expect(report).toContain("Aucun comparable suffisamment proche");
   });
 
   it("signale que l'authenticité et le risque Frankenstein restent non confirmés", () => {
@@ -73,5 +109,15 @@ describe("formatFullDealAnalysis", () => {
     expect(report).toContain("AUTHENTICITÉ / FRANKENSTEIN : RISQUE ÉLEVÉ");
     expect(report).toContain("aftermarket");
     expect(report).toContain("redial");
+  });
+
+  it("explique un calibre Seiko sans référence complète de boîte", () => {
+    const report = formatFullDealAnalysis(
+      { ...product, title: "Vintage Seiko 5 Purple Dial Automatic Movement No. 7009A" },
+      score,
+      []
+    );
+    expect(report).toContain("Référence/calibre détecté : 7009a");
+    expect(report).toContain("référence complète de boîte");
   });
 });
