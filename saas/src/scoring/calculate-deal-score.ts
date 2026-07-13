@@ -7,11 +7,16 @@ import { absoluteProfitScoreCap, pokemonScoreWarnings } from "@/lib/tcg/pokemon"
 const conditionScores = { NEW: 95, A: 88, B: 72, C: 48, REPAIR: 30, UNKNOWN: 35 };
 const clamp = (value: number) => Math.max(0, Math.min(100, Math.round(value)));
 
-function evidenceSummary(market: MarketEstimate) {
+function evidenceCounts(market: MarketEstimate) {
   const sold = market.comparableDetails.filter((item) => item.evidenceType === "SOLD").length;
   const active = market.comparableDetails.filter((item) => item.evidenceType === "ACTIVE_LISTING").length;
   const signals = market.comparableDetails.filter((item) => item.evidenceType === "MARKET_SIGNAL").length;
-  if (!market.comparableCount) return "Preuve D : aucun comparable exploitable.";
+  return { sold, active, signals };
+}
+
+function evidenceSummary(market: MarketEstimate) {
+  const { sold, active, signals } = evidenceCounts(market);
+  if (!market.comparableCount) return "Preuve D : aucun comparable suffisamment proche.";
   return `Preuve ${market.confidence} : ${sold} vente(s) conclue(s), ${active} annonce(s) active(s), ${signals} signal(aux) marché.`;
 }
 
@@ -67,11 +72,14 @@ export function calculateDealScore(
       conditionScore * 0.12 +
       urgencyScore * 0.08
   );
-  const confidenceCappedScore = market.confidence === "LOW" && market.comparableCount < 8
-    ? Math.min(rawTotalScore, 54)
-    : rawTotalScore;
+  const { sold: soldComparableCount } = evidenceCounts(market);
+  const evidenceCappedScore = soldComparableCount === 0
+    ? Math.min(rawTotalScore, 64)
+    : market.confidence === "LOW"
+      ? Math.min(rawTotalScore, 69)
+      : rawTotalScore;
   const profitCap = absoluteProfitScoreCap(estimatedNetProfit);
-  const totalScore = Math.min(confidenceCappedScore, profitCap);
+  const totalScore = Math.min(evidenceCappedScore, profitCap);
   const recommendation =
     totalScore >= 85
       ? "BUY"
@@ -82,11 +90,14 @@ export function calculateDealScore(
           : "AVOID";
   const actionPlan = buildDealActionPlan(candidate, radar, market.median, market.confidence);
   const respectsOfferDiscipline = candidate.priceAmount <= actionPlan.maximumOffer;
-  const finalRecommendation = !respectsOfferDiscipline && recommendation === "BUY"
+  let finalRecommendation = !respectsOfferDiscipline && recommendation === "BUY"
     ? "NEGOTIATE"
     : !respectsOfferDiscipline && recommendation === "NEGOTIATE"
       ? "WATCH"
       : recommendation;
+  if (soldComparableCount === 0 && ["BUY", "NEGOTIATE"].includes(finalRecommendation)) {
+    finalRecommendation = "WATCH";
+  }
   const decision = professionalDecision({
     recommendation: finalRecommendation,
     confidence: market.confidence,
@@ -99,11 +110,9 @@ export function calculateDealScore(
       ? `Marge nette estimée à ${estimatedNetProfit.toFixed(0)} CHF.`
       : "Marge nette négative.",
     `ROI estimé à ${roi.toFixed(1)} %.`,
-    market.confidence !== "LOW"
-      ? "Estimation soutenue par des comparables."
-      : market.comparableCount >= 8
-        ? "Estimation basée sur plusieurs signaux actifs, à confirmer par ventes conclues."
-        : "Estimation de marché prudente.",
+    soldComparableCount > 0
+      ? "Estimation soutenue par au moins une vente conclue exploitable."
+      : "Aucune vente conclue exploitable : les prix demandés ne suffisent pas à valider un achat.",
     evidenceSummary(market),
     costFormula(candidate, radar, shipping, estimatedBuyCost, saleFees)
   ];
@@ -114,11 +123,16 @@ export function calculateDealScore(
   if (market.confidence === "LOW") {
     warnings.push("Confiance marché faible : ne pas traiter comme un achat automatique.");
   }
-  if (profitCap < confidenceCappedScore) {
+  if (soldComparableCount === 0) {
+    warnings.push("Aucune vente conclue suffisamment proche : score plafonné à 64/100 et recommandation d’achat interdite.");
+  } else if (market.confidence === "LOW") {
+    warnings.push("Preuve de marché trop faible : score plafonné à 69/100.");
+  }
+  if (profitCap < evidenceCappedScore) {
     warnings.push(`Score plafonné à ${profitCap}/100 car la marge nette absolue est trop faible (${estimatedNetProfit.toFixed(0)} CHF).`);
   }
   warnings.push(...pokemonScoreWarnings(candidate));
-  warnings.push(...market.notes.slice(0, 3));
+  warnings.push(...market.notes.slice(0, 4));
 
   return {
     totalScore,
@@ -135,12 +149,14 @@ export function calculateDealScore(
     breakEvenResalePrice: actionPlan.breakEvenResalePrice,
     recommendedChannel: actionPlan.recommendedChannel,
     estimatedSaleDays: actionPlan.estimatedSaleDays,
-    actionPlan: actionPlan.action,
+    actionPlan: soldComparableCount === 0
+      ? `Ne pas acheter automatiquement. Rechercher une vente conclue de la même référence avant de dépasser ${actionPlan.maximumOffer.toFixed(0)} CHF.`
+      : actionPlan.action,
     evidenceGrade: decision.evidenceGrade,
     decisionStatus: decision.decisionStatus,
     decisionRationale: decision.decisionRationale,
     recommendation: finalRecommendation,
-    scoringVersion: "v5",
+    scoringVersion: "v6",
     marketConfidence: market.confidence,
     comparableCount: market.comparableCount,
     reasons,
