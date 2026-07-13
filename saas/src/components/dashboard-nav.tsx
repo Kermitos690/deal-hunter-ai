@@ -9,6 +9,7 @@ export function DashboardNav({ user }: { user: AppUser }) {
     ["/dashboard/deals", "Deals"],
     ["/dashboard/performance", "Performance"],
     ["/dashboard/alerts", "Alertes"],
+    ...(process.env.ENABLE_REFERRALS === "true" ? [["/dashboard/referrals", "Parrainage"]] : []),
     ["/dashboard/settings", "Réglages"]
   ];
   if (user.role === "admin") links.push(["/admin", "Administration"]);

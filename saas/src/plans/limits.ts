@@ -1,3 +1,4 @@
+import { effectivePlanForUser } from "@/lib/referrals/referral-program";
 import type { AppUser, Plan } from "@/types";
 
 export const PLAN_LIMITS: Record<
@@ -15,10 +16,11 @@ export const PLAN_LIMITS: Record<
 };
 
 export function enforcePlanLimits(
-  user: Pick<AppUser, "plan">,
+  user: Pick<AppUser, "plan" | "referral_access_until">,
   usage: { activeRadars: number; alertsToday: number; requestedScanMinutes?: number }
 ) {
-  const limits = PLAN_LIMITS[user.plan];
+  const plan = effectivePlanForUser(user);
+  const limits = PLAN_LIMITS[plan];
   const errors: string[] = [];
   if (usage.activeRadars >= limits.activeRadars) errors.push("Limite de radars actifs atteinte.");
   if (usage.alertsToday >= limits.alertsPerDay) errors.push("Quota quotidien d’alertes atteint.");
@@ -26,5 +28,5 @@ export function enforcePlanLimits(
     usage.requestedScanMinutes &&
     usage.requestedScanMinutes < limits.minScanMinutes
   ) errors.push(`Fréquence minimale du plan : ${limits.minScanMinutes} minutes.`);
-  return { allowed: errors.length === 0, errors, limits };
+  return { allowed: errors.length === 0, errors, limits, plan };
 }

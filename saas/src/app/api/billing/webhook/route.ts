@@ -6,6 +6,10 @@ import {
   planForStripePrice,
   stripeClient
 } from "@/lib/billing/stripe";
+import {
+  applyAvailableReferralCredits,
+  qualifyReferralForPaidInvoice
+} from "@/lib/referrals/server";
 
 export const dynamic = "force-dynamic";
 
@@ -44,6 +48,11 @@ async function syncSubscription(subscription: Stripe.Subscription) {
     plan: paidSubscriptionStatuses.has(subscription.status) ? plan : "free"
   }).eq("id", user.id);
   databaseFailure("Synchronisation plan utilisateur", planError);
+
+  if (paidSubscriptionStatuses.has(subscription.status)) {
+    await applyAvailableReferralCredits(user.id);
+  }
+  return user.id;
 }
 
 async function syncInvoice(invoice: Stripe.Invoice) {
@@ -51,7 +60,7 @@ async function syncInvoice(invoice: Stripe.Invoice) {
   const customerId = typeof invoice.customer === "string"
     ? invoice.customer
     : invoice.customer?.id;
-  if (!customerId) return;
+  if (!customerId) return null;
   const { data: user, error: userError } = await db
     .from("users").select("id").eq("stripe_customer_id", customerId).maybeSingle();
   databaseFailure("Lecture utilisateur facture Stripe", userError);
@@ -76,6 +85,7 @@ async function syncInvoice(invoice: Stripe.Invoice) {
       : null
   }, { onConflict: "invoice_id" });
   databaseFailure("Synchronisation facture Stripe", paymentError);
+  return user.id;
 }
 
 async function processStripeEvent(event: Stripe.Event) {
@@ -99,7 +109,15 @@ async function processStripeEvent(event: Stripe.Event) {
   }
 
   if (event.type === "invoice.paid" || event.type === "invoice.payment_failed") {
-    await syncInvoice(event.data.object as Stripe.Invoice);
+    const invoice = event.data.object as Stripe.Invoice;
+    const userId = await syncInvoice(invoice);
+    if (event.type === "invoice.paid" && userId && invoice.amount_paid > 0) {
+      const reward = await qualifyReferralForPaidInvoice(userId, invoice.id);
+      if (reward?.referrer_user_id) {
+        await applyAvailableReferralCredits(String(reward.referrer_user_id));
+      }
+      await applyAvailableReferralCredits(userId);
+    }
   }
 }
 
@@ -136,8 +154,6 @@ export async function POST(request: Request) {
     await processStripeEvent(event);
     return NextResponse.json({ received: true });
   } catch (error) {
-    // The row is a processing claim. Releasing it allows Stripe to retry after a
-    // transient application or database failure without duplicating side effects.
     const { error: releaseError } = await db.from("billing_events").delete().eq("event_id", event.id);
     if (releaseError) console.error("Stripe event claim release failed:", releaseError.message);
     console.error("Stripe webhook processing failed:", error instanceof Error ? error.message : "unknown");
