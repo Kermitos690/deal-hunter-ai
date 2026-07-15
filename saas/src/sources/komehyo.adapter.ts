@@ -1,4 +1,5 @@
 import { intelligentSearchQueries, isMarketplaceRelevantListing } from "@/lib/query-intelligence";
+import { isWatchCategory } from "@/lib/search-precision";
 import type { ConditionGrade, ProductCandidate, Radar, SourceAdapter } from "@/types";
 import { inferRadarBrand } from "./ebay.adapter";
 
@@ -33,10 +34,10 @@ export function komehyoSearchQueries(radar: Pick<Radar, "brands" | "models" | "i
   return intelligentSearchQueries(radar, 6);
 }
 
-export function parseKomehyoHtml(
-  html: string,
-  context: Pick<Radar, "brands" | "models" | "include_keywords" | "category">
-): ProductCandidate[] {
+type KomehyoParseContext = Pick<Radar, "brands" | "models" | "category"> & Partial<Pick<Radar, "include_keywords">>;
+
+export function parseKomehyoHtml(html: string, context: KomehyoParseContext): ProductCandidate[] {
+  const relevanceContext = { ...context, include_keywords: context.include_keywords ?? [] };
   return html
     .split(/<li class="p-lists__item">/)
     .slice(1)
@@ -49,7 +50,7 @@ export function parseKomehyoHtml(
       const priceRaw = block.match(/p-link__txt--price[^>]*>￥([\d,]+)/)?.[1];
       if (!path || !id || !titleRaw || !priceRaw) return [];
       const title = decodeHtml(titleRaw);
-      if (!isMarketplaceRelevantListing(title, context)) return [];
+      if (!isWatchCategory(context.category) && !isMarketplaceRelevantListing(title, relevanceContext)) return [];
       const displayedBrand = decodeHtml(
         block.match(/p-link__txt--brand">([\s\S]*?)<\/span>/)?.[1] ?? ""
       );
