@@ -2,7 +2,7 @@ name: Deal Hunter radar scheduler
 
 on:
   schedule:
-    - cron: "17,47 * * * *"
+    - cron: "17 */2 * * *"
   workflow_dispatch:
 
 permissions:
@@ -10,12 +10,12 @@ permissions:
 
 concurrency:
   group: deal-hunter-radar-scheduler
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   scan:
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    timeout-minutes: 8
     env:
       CRON_SECRET: ${{ secrets.CRON_SECRET }}
       APP_BASE_URL: ${{ secrets.APP_BASE_URL || 'https://deal-hunter-ai.vercel.app' }}
@@ -31,51 +31,29 @@ jobs:
           esac
 
       - name: Run due radars
-        id: scans
         run: |
           set -euo pipefail
           base_url="${APP_BASE_URL%/}"
           response="$(curl --fail-with-body --silent --show-error \
-            --retry 2 --retry-delay 2 --retry-connrefused --max-time 360 \
+            --retry 1 --retry-delay 2 --retry-connrefused --max-time 240 \
             -H "Authorization: Bearer ${CRON_SECRET}" \
             "${base_url}/api/cron/scan")"
           printf '%s\n' "$response"
           printf '%s' "$response" | jq -e '(.results | type == "array") and all(.results[]?; .ok == true)'
           total="$(printf '%s' "$response" | jq '.results | length')"
-          failed="$(printf '%s' "$response" | jq '[.results[]? | select(.ok != true)] | length')"
-          {
-            echo "### Radar scans"
-            echo "- Results: ${total}"
-            echo "- Failed: ${failed}"
-          } >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Run auction reminders
-        id: reminders
-        run: |
-          set -euo pipefail
-          base_url="${APP_BASE_URL%/}"
-          response="$(curl --fail-with-body --silent --show-error \
-            --retry 2 --retry-delay 2 --retry-connrefused --max-time 120 \
-            -H "Authorization: Bearer ${CRON_SECRET}" \
-            "${base_url}/api/cron/reminders")"
-          printf '%s\n' "$response"
-          printf '%s' "$response" | jq -e 'type == "object" or type == "array"'
-          echo "### Auction reminders" >> "$GITHUB_STEP_SUMMARY"
-          echo '- Endpoint completed successfully.' >> "$GITHUB_STEP_SUMMARY"
+          echo "### Radar scans" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Results: ${total}" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Run email alert fast lane
-        id: email_alerts
         run: |
           set -euo pipefail
           base_url="${APP_BASE_URL%/}"
           response="$(curl --fail-with-body --silent --show-error \
-            --retry 2 --retry-delay 2 --retry-connrefused --max-time 240 \
+            --retry 1 --retry-delay 2 --retry-connrefused --max-time 180 \
             -H "Authorization: Bearer ${CRON_SECRET}" \
             "${base_url}/api/cron/email-alerts")"
           printf '%s\n' "$response"
           printf '%s' "$response" | jq -e '(.results | type == "array") and all(.results[]?; .ok == true)'
           total="$(printf '%s' "$response" | jq '.results | length')"
-          {
-            echo "### Email alert fast lane"
-            echo "- Results: ${total}"
-          } >> "$GITHUB_STEP_SUMMARY"
+          echo "### Email alert fast lane" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Results: ${total}" >> "$GITHUB_STEP_SUMMARY"
