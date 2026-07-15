@@ -1,3 +1,4 @@
+import { searchTermAlternatives } from "@/lib/search-precision";
 import type { Radar } from "@/types";
 
 const normalize = (value: string) => value
@@ -112,6 +113,24 @@ function coreTerms(input: Pick<Radar, "category" | "brands" | "models" | "includ
   return unique([...input.brands, ...input.models, ...input.include_keywords]);
 }
 
+function expertCoreCombinations(cores: string[], limit = 12) {
+  if (!cores.length) return [[]] as string[][];
+  let combinations: string[][] = [[]];
+  for (const core of cores) {
+    const alternatives = searchTermAlternatives(core).slice(0, 4);
+    const next: string[][] = [];
+    for (const combination of combinations) {
+      for (const alternative of alternatives.length ? alternatives : [core]) {
+        next.push([...combination, alternative]);
+        if (next.length >= limit) break;
+      }
+      if (next.length >= limit) break;
+    }
+    combinations = next.slice(0, limit);
+  }
+  return combinations;
+}
+
 export type IntelligentQuery = {
   query: string;
   intentIds: string[];
@@ -142,6 +161,12 @@ export function buildIntelligentQueries(
   push(exactBase, "exact");
   if (cores.length) push(cores.join(" "), "exact");
 
+  const primaryCategoryHint = intents[0]?.categoryHints[0] ?? tokenAlternatives(input.category)[1] ?? input.category;
+  for (const combination of expertCoreCombinations(cores, 12)) {
+    push([...combination, primaryCategoryHint].filter(Boolean).join(" "), "expanded");
+    if (output.length >= Math.min(limit, 14)) break;
+  }
+
   if (intents.length > 1) {
     const intentSignals = intents.map((intent) => unique([
       ...intent.categoryHints,
@@ -153,9 +178,9 @@ export function buildIntelligentQueries(
       for (const right of second) {
         push(`${left} ${right}`, "expanded");
         push([cores[0], left, right].filter(Boolean).join(" "), "expanded");
-        if (output.length >= Math.min(limit, 14)) break;
+        if (output.length >= Math.min(limit, 18)) break;
       }
-      if (output.length >= Math.min(limit, 14)) break;
+      if (output.length >= Math.min(limit, 18)) break;
     }
   }
 
@@ -197,11 +222,11 @@ export function isIntelligentlyRelevantListing(
 ) {
   const normalizedTitle = normalize(title);
   if (!normalizedTitle) return false;
-  const cores = coreTerms(input).map(normalize).filter(Boolean);
-  const intents = detectQueryIntents(input);
+  const cores = coreTerms(input).flatMap((term) => searchTermAlternatives(term)).map(normalize).filter(Boolean);
   const hasCore = cores.some((term) => normalizedTitle.includes(term));
   if (hasCore) return true;
 
+  const intents = detectQueryIntents(input);
   const intentMatches = intents.map((intent) => unique([
     ...intent.categoryHints,
     ...intent.synonyms,
