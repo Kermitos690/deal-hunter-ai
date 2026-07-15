@@ -50,10 +50,10 @@ export function parseKomehyoHtml(html: string, context: KomehyoParseContext): Pr
       const priceRaw = block.match(/p-link__txt--price[^>]*>￥([\d,]+)/)?.[1];
       if (!path || !id || !titleRaw || !priceRaw) return [];
       const title = decodeHtml(titleRaw);
-      if (!isWatchCategory(context.category) && !isMarketplaceRelevantListing(title, relevanceContext)) return [];
       const displayedBrand = decodeHtml(
         block.match(/p-link__txt--brand">([\s\S]*?)<\/span>/)?.[1] ?? ""
       );
+      if (!isWatchCategory(context.category) && !isMarketplaceRelevantListing(`${title} ${displayedBrand}`, relevanceContext)) return [];
       const price = Number(priceRaw.replaceAll(",", ""));
       if (!Number.isFinite(price) || price <= 0) return [];
       const rank = decodeHtml(block.match(/p-link__txt--rank">([\s\S]*?)<\/span>\s*<\/span>/)?.[1] ?? "");
