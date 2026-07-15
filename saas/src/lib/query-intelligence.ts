@@ -245,7 +245,7 @@ const OBVIOUS_WATCH_ACCESSORY_RE = /(?:watch (?:glass|crystal|strap|band|case)|r
 export function isMarketplaceRelevantListing(
   title: string,
   input: RadarSearchInput,
-  options: { allowConciseWatchTitle?: boolean } = {},
+  options: { allowConciseWatchTitle?: boolean } = { allowConciseWatchTitle: true },
 ) {
   const expectedTerms = [...input.brands, ...input.models, ...input.include_keywords];
   if (isWatchCategory(input.category)) {
