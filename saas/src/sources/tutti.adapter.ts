@@ -1,3 +1,4 @@
+import { intelligentSearchQueries, isMarketplaceRelevantListing } from "@/lib/query-intelligence";
 import type { ConditionGrade, ProductCandidate, Radar, SourceAdapter } from "@/types";
 import { inferRadarBrand } from "./ebay.adapter";
 import { fetchErrorMessage, liveFetch } from "./live-http";
@@ -105,6 +106,10 @@ function searchCards(html: string): SearchCard[] {
   return parsed.slice(0, 10);
 }
 
+export function tuttiSearchQueries(radar: Pick<Radar, "brands" | "models" | "include_keywords" | "category">) {
+  return intelligentSearchQueries(radar, 6);
+}
+
 async function detailCandidate(card: SearchCard, radar: Radar): Promise<ProductCandidate | null> {
   const response = await liveFetch(card.url, {
     headers: BROWSER_HEADERS,
@@ -118,6 +123,7 @@ async function detailCandidate(card: SearchCard, radar: Radar): Promise<ProductC
   const price = card.price ?? parsePrice(html) ?? null;
   if (!price) return null;
   const title = titleFrom(html) || card.title || "Annonce Tutti";
+  if (!isMarketplaceRelevantListing(title, radar)) return null;
   const id = card.id;
   return {
     source: "tutti",
@@ -145,10 +151,8 @@ export const tuttiAdapter: SourceAdapter = {
   enabled: process.env.ENABLE_TUTTI_SOURCE === "true",
   async scan(radar) {
     if (!this.enabled) return [];
-    const queries = radar.brands.length
-      ? radar.brands.map((brand) => [brand, ...radar.models, ...radar.include_keywords, radar.category].filter(Boolean).join(" "))
-      : [[...radar.models, ...radar.include_keywords, radar.category].filter(Boolean).join(" ")];
-    const results = await Promise.all(queries.slice(0, 6).map(async (query) => {
+    const queries = tuttiSearchQueries(radar);
+    const results = await Promise.all(queries.map(async (query) => {
       try {
         const response = await liveFetch(`${BASE_URL}/fr/q?query=${encodeURIComponent(query)}`, {
           headers: BROWSER_HEADERS,
