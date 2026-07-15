@@ -1,0 +1,27 @@
+{
+  "status": "verified_completed",
+  "endpoint": "https://deal-hunter-ai.vercel.app/api/internal/release-broadcast/dh-qie-20260715-b5f4d2",
+  "verified_at": "2026-07-15T07:09:05Z",
+  "first_call": {
+    "ok": true,
+    "remaining": 0,
+    "has_more": false,
+    "status": "completed",
+    "sent": 3,
+    "failed": 0,
+    "blocked": 0,
+    "skipped": 0,
+    "already_completed": true
+  },
+  "idempotence_check": {
+    "ok": true,
+    "remaining": 0,
+    "has_more": false,
+    "status": "completed",
+    "sent": 3,
+    "failed": 0,
+    "blocked": 0,
+    "skipped": 0,
+    "already_completed": true
+  }
+}
