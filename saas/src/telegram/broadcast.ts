@@ -280,7 +280,7 @@ async function deliveredTelegramIds(broadcastId: string) {
     .limit(10000);
   if (error) throw error;
   return new Set((data ?? [])
-    .filter((row: any) => ["sent", "blocked", "skipped"].includes(String(row.payload?.status)))
+    .filter((row: any) => ["sent", "failed", "blocked", "skipped"].includes(String(row.payload?.status)))
     .map((row: any) => String(row.payload?.telegram_id ?? ""))
     .filter(Boolean));
 }
