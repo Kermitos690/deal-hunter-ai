@@ -39,18 +39,18 @@ describe("source eBay", () => {
   });
 
   it("écarte les accessoires et catalogues d’un radar de montres", () => {
-    expect(isRelevantEbayListing("Cadran Omega Seamaster ancien", "Montres", ["Omega", "Seamaster"])).toBe(false);
-    expect(isRelevantEbayListing("Rolex Daytona stainless steel bracelet 78360", "Montres", ["Rolex", "Daytona"])).toBe(false);
-    expect(isRelevantEbayListing("Rolex catalogue watches 2024", "Montres", ["Rolex"])).toBe(false);
-    expect(isRelevantEbayListing("Montre Omega Seamaster automatique", "Montres", ["Omega", "Seamaster"])).toBe(true);
-    expect(isRelevantEbayListing("Rolex GMT-Master II 126710BLRO Pepsi full set", "Montres", ["Rolex", "GMT-Master II"])).toBe(true);
+    expect(isRelevantEbayListing("Cadran Omega Seamaster ancien", watchRadar, ["Omega", "Seamaster"])).toBe(false);
+    expect(isRelevantEbayListing("Rolex Daytona stainless steel bracelet 78360", watchRadar, ["Rolex", "Daytona"])).toBe(false);
+    expect(isRelevantEbayListing("Rolex catalogue watches 2024", watchRadar, ["Rolex"])).toBe(false);
+    expect(isRelevantEbayListing("Montre Omega Seamaster automatique", watchRadar, ["Omega", "Seamaster"])).toBe(true);
+    expect(isRelevantEbayListing("Rolex GMT-Master II 126710BLRO Pepsi full set", watchRadar, ["Rolex", "GMT-Master II"])).toBe(true);
   });
 
-  it("génère des requêtes précises et développe les surnoms", () => {
+  it("génère des requêtes précises et conserve les alias experts", () => {
     const queries = ebaySearchQueries(watchRadar);
     expect(queries).toContain("Rolex GMT-Master II Pepsi watch");
     expect(queries.some((query) => query.toLowerCase().includes("blro"))).toBe(true);
-    expect(queries.every((query) => query.endsWith("watch"))).toBe(true);
+    expect(queries.some((query) => query.toLowerCase().endsWith("watch"))).toBe(true);
   });
 
   it("garde la passe prioritaire désactivée par défaut", () => {
