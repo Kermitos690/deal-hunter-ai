@@ -1,4 +1,4 @@
-import { searchTermAlternatives } from "@/lib/search-precision";
+import { isWatchCategory, looksLikeCompleteWatchTitle, searchTermAlternatives } from "@/lib/search-precision";
 import type { Radar } from "@/types";
 
 const normalize = (value: string) => value
@@ -18,6 +18,8 @@ const unique = (values: string[]) => {
     return true;
   });
 };
+
+type RadarSearchInput = Pick<Radar, "category" | "brands" | "models" | "include_keywords">;
 
 type IntentRule = {
   id: string;
@@ -104,12 +106,12 @@ function tokenAlternatives(term: string) {
   return unique([term, ...aliases]);
 }
 
-export function detectQueryIntents(input: Pick<Radar, "category" | "brands" | "models" | "include_keywords">) {
+export function detectQueryIntents(input: RadarSearchInput) {
   const text = [input.category, ...input.brands, ...input.models, ...input.include_keywords].join(" ");
   return INTENTS.filter((intent) => intent.matches.some((pattern) => pattern.test(text)));
 }
 
-function coreTerms(input: Pick<Radar, "category" | "brands" | "models" | "include_keywords">) {
+function coreTerms(input: RadarSearchInput) {
   return unique([...input.brands, ...input.models, ...input.include_keywords]);
 }
 
@@ -137,10 +139,7 @@ export type IntelligentQuery = {
   precision: "exact" | "expanded" | "discovery";
 };
 
-export function buildIntelligentQueries(
-  input: Pick<Radar, "category" | "brands" | "models" | "include_keywords">,
-  limit = 24,
-): IntelligentQuery[] {
+export function buildIntelligentQueries(input: RadarSearchInput, limit = 24): IntelligentQuery[] {
   const intents = detectQueryIntents(input);
   const intentIds = intents.map((intent) => intent.id);
   const cores = coreTerms(input);
@@ -209,17 +208,11 @@ export function buildIntelligentQueries(
   return output.slice(0, limit);
 }
 
-export function intelligentSearchQueries(
-  input: Pick<Radar, "category" | "brands" | "models" | "include_keywords">,
-  limit = 24,
-) {
+export function intelligentSearchQueries(input: RadarSearchInput, limit = 24) {
   return buildIntelligentQueries(input, limit).map((item) => item.query);
 }
 
-export function isIntelligentlyRelevantListing(
-  title: string,
-  input: Pick<Radar, "category" | "brands" | "models" | "include_keywords">,
-) {
+export function isIntelligentlyRelevantListing(title: string, input: RadarSearchInput) {
   const normalizedTitle = normalize(title);
   if (!normalizedTitle) return false;
   const cores = coreTerms(input).flatMap((term) => searchTermAlternatives(term)).map(normalize).filter(Boolean);
@@ -237,4 +230,10 @@ export function isIntelligentlyRelevantListing(
   if (intents.length > 1) return intentMatches.every(Boolean);
   if (!cores.length && intents.length === 1) return intentMatches[0] ?? false;
   return false;
+}
+
+export function isMarketplaceRelevantListing(title: string, input: RadarSearchInput) {
+  const expectedTerms = [...input.brands, ...input.models, ...input.include_keywords];
+  if (isWatchCategory(input.category)) return looksLikeCompleteWatchTitle(title, expectedTerms);
+  return isIntelligentlyRelevantListing(title, input);
 }
