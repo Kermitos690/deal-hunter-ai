@@ -1,4 +1,4 @@
-import { searchTermAlternatives } from "@/lib/search-precision";
+import { isWatchCategory, looksLikeCompleteWatchTitle, matchesAnySearchTerm, searchTermAlternatives } from "@/lib/search-precision";
 import type { Radar } from "@/types";
 
 const normalize = (value: string) => value
@@ -18,6 +18,8 @@ const unique = (values: string[]) => {
     return true;
   });
 };
+
+type RadarSearchInput = Pick<Radar, "category" | "brands" | "models" | "include_keywords">;
 
 type IntentRule = {
   id: string;
@@ -104,12 +106,12 @@ function tokenAlternatives(term: string) {
   return unique([term, ...aliases]);
 }
 
-export function detectQueryIntents(input: Pick<Radar, "category" | "brands" | "models" | "include_keywords">) {
+export function detectQueryIntents(input: RadarSearchInput) {
   const text = [input.category, ...input.brands, ...input.models, ...input.include_keywords].join(" ");
   return INTENTS.filter((intent) => intent.matches.some((pattern) => pattern.test(text)));
 }
 
-function coreTerms(input: Pick<Radar, "category" | "brands" | "models" | "include_keywords">) {
+function coreTerms(input: RadarSearchInput) {
   return unique([...input.brands, ...input.models, ...input.include_keywords]);
 }
 
@@ -137,10 +139,7 @@ export type IntelligentQuery = {
   precision: "exact" | "expanded" | "discovery";
 };
 
-export function buildIntelligentQueries(
-  input: Pick<Radar, "category" | "brands" | "models" | "include_keywords">,
-  limit = 24,
-): IntelligentQuery[] {
+export function buildIntelligentQueries(input: RadarSearchInput, limit = 24): IntelligentQuery[] {
   const intents = detectQueryIntents(input);
   const intentIds = intents.map((intent) => intent.id);
   const cores = coreTerms(input);
@@ -152,6 +151,7 @@ export function buildIntelligentQueries(
   const sellerTerms = unique(intents.flatMap((intent) => intent.sellerTerms ?? []));
   const output: IntelligentQuery[] = [];
   const push = (query: string, precision: IntelligentQuery["precision"]) => {
+    if (output.length >= limit) return;
     const clean = query.trim().replace(/\s+/g, " ");
     if (!clean || output.some((item) => normalize(item.query) === normalize(clean))) return;
     output.push({ query: clean, intentIds, precision });
@@ -168,14 +168,21 @@ export function buildIntelligentQueries(
   }
 
   if (intents.length > 1) {
+    const [first, second] = intents;
+    const firstPrimary = first.synonyms[0] ?? first.categoryHints[0] ?? "";
+    const secondPrimary = second.synonyms[0] ?? second.categoryHints[0] ?? "";
+    push(`${firstPrimary} ${secondPrimary}`, "expanded");
+    push(`${firstPrimary} ${second.categoryHints[0] ?? secondPrimary}`, "expanded");
+    push(`${firstPrimary} ${second.categoryHints[1] ?? secondPrimary}`, "expanded");
+
     const intentSignals = intents.map((intent) => unique([
-      ...intent.categoryHints,
       ...intent.synonyms,
+      ...intent.categoryHints,
       ...intent.translations,
-    ]).slice(0, 5));
-    const [first = [], second = []] = intentSignals;
-    for (const left of first) {
-      for (const right of second) {
+    ]).slice(0, 7));
+    const [firstSignals = [], secondSignals = []] = intentSignals;
+    for (const left of firstSignals) {
+      for (const right of secondSignals) {
         push(`${left} ${right}`, "expanded");
         push([cores[0], left, right].filter(Boolean).join(" "), "expanded");
         if (output.length >= Math.min(limit, 18)) break;
@@ -209,17 +216,11 @@ export function buildIntelligentQueries(
   return output.slice(0, limit);
 }
 
-export function intelligentSearchQueries(
-  input: Pick<Radar, "category" | "brands" | "models" | "include_keywords">,
-  limit = 24,
-) {
+export function intelligentSearchQueries(input: RadarSearchInput, limit = 24) {
   return buildIntelligentQueries(input, limit).map((item) => item.query);
 }
 
-export function isIntelligentlyRelevantListing(
-  title: string,
-  input: Pick<Radar, "category" | "brands" | "models" | "include_keywords">,
-) {
+export function isIntelligentlyRelevantListing(title: string, input: RadarSearchInput) {
   const normalizedTitle = normalize(title);
   if (!normalizedTitle) return false;
   const cores = coreTerms(input).flatMap((term) => searchTermAlternatives(term)).map(normalize).filter(Boolean);
@@ -237,4 +238,20 @@ export function isIntelligentlyRelevantListing(
   if (intents.length > 1) return intentMatches.every(Boolean);
   if (!cores.length && intents.length === 1) return intentMatches[0] ?? false;
   return false;
+}
+
+const OBVIOUS_WATCH_ACCESSORY_RE = /(?:watch (?:glass|crystal|strap|band|case)|replacement (?:glass|crystal|strap|bracelet|dial|bezel)|(?:strap|bracelet|band|crystal|glass) for|(?:dial|cadran|movement|mouvement|watch case|boitier) only|empty (?:watch )?box|watch not included|without watch|sans montre|catalogue?|brochure)/i;
+
+export function isMarketplaceRelevantListing(
+  title: string,
+  input: RadarSearchInput,
+  options: { allowConciseWatchTitle?: boolean } = { allowConciseWatchTitle: true },
+) {
+  const expectedTerms = [...input.brands, ...input.models, ...input.include_keywords];
+  if (isWatchCategory(input.category)) {
+    if (looksLikeCompleteWatchTitle(title, expectedTerms)) return true;
+    if (!options.allowConciseWatchTitle || !expectedTerms.length) return false;
+    return matchesAnySearchTerm(title, expectedTerms) && !OBVIOUS_WATCH_ACCESSORY_RE.test(title);
+  }
+  return isIntelligentlyRelevantListing(title, input);
 }

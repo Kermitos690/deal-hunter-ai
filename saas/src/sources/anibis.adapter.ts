@@ -1,3 +1,4 @@
+import { intelligentSearchQueries, isMarketplaceRelevantListing } from "@/lib/query-intelligence";
 import type { ConditionGrade, ProductCandidate, Radar, SourceAdapter } from "@/types";
 import { inferRadarBrand } from "./ebay.adapter";
 import { fetchErrorMessage, liveFetch } from "./live-http";
@@ -67,6 +68,10 @@ function detailLinks(html: string) {
     .slice(0, 20);
 }
 
+export function anibisSearchQueries(radar: Pick<Radar, "brands" | "models" | "include_keywords" | "category">) {
+  return intelligentSearchQueries(radar, 6);
+}
+
 async function detailCandidate(url: string, radar: Radar): Promise<ProductCandidate | null> {
   const response = await liveFetch(url, {
     headers: BROWSER_HEADERS,
@@ -78,6 +83,7 @@ async function detailCandidate(url: string, radar: Radar): Promise<ProductCandid
   const text = normalized(html);
   if (INACTIVE_RE.test(text) || !ACTIVE_RE.test(text)) return null;
   const title = titleFrom(html);
+  if (!isMarketplaceRelevantListing(title, radar)) return null;
   const price = parsePrice(html.match(/(?:Prix CHF|Preis CHF|Prezzo CHF)[\s\S]{0,120}/i)?.[0] ?? html);
   if (!price) return null;
   const id = url.match(/\/(\d+)\/?$/)?.[1] ?? url;
@@ -108,10 +114,8 @@ export const anibisAdapter: SourceAdapter = {
   enabled: process.env.ENABLE_ANIBIS_SOURCE === "true",
   async scan(radar) {
     if (!this.enabled) return [];
-    const queries = radar.brands.length
-      ? radar.brands.map((brand) => [brand, ...radar.models, ...radar.include_keywords, radar.category].filter(Boolean).join(" "))
-      : [[...radar.models, ...radar.include_keywords, radar.category].filter(Boolean).join(" ")];
-    const results = await Promise.all(queries.slice(0, 6).map(async (query) => {
+    const queries = anibisSearchQueries(radar);
+    const results = await Promise.all(queries.map(async (query) => {
       try {
         const response = await liveFetch(`${BASE_URL}/fr/q/${encodeURIComponent(query)}`, {
           headers: BROWSER_HEADERS,

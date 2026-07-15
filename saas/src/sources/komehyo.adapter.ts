@@ -1,4 +1,6 @@
-import type { ConditionGrade, ProductCandidate, SourceAdapter } from "@/types";
+import { intelligentSearchQueries, isMarketplaceRelevantListing } from "@/lib/query-intelligence";
+import { isWatchCategory } from "@/lib/search-precision";
+import type { ConditionGrade, ProductCandidate, Radar, SourceAdapter } from "@/types";
 import { inferRadarBrand } from "./ebay.adapter";
 
 const BASE_URL = "https://komehyo.jp";
@@ -28,10 +30,14 @@ export function komehyoConditionGrade(value: string): ConditionGrade {
   return "UNKNOWN";
 }
 
-export function parseKomehyoHtml(
-  html: string,
-  context: { brands: string[]; models: string[]; category: string }
-): ProductCandidate[] {
+export function komehyoSearchQueries(radar: Pick<Radar, "brands" | "models" | "include_keywords" | "category">) {
+  return intelligentSearchQueries(radar, 6);
+}
+
+type KomehyoParseContext = Pick<Radar, "brands" | "models" | "category"> & Partial<Pick<Radar, "include_keywords">>;
+
+export function parseKomehyoHtml(html: string, context: KomehyoParseContext): ProductCandidate[] {
+  const relevanceContext = { ...context, include_keywords: context.include_keywords ?? [] };
   return html
     .split(/<li class="p-lists__item">/)
     .slice(1)
@@ -47,6 +53,7 @@ export function parseKomehyoHtml(
       const displayedBrand = decodeHtml(
         block.match(/p-link__txt--brand">([\s\S]*?)<\/span>/)?.[1] ?? ""
       );
+      if (!isWatchCategory(context.category) && !isMarketplaceRelevantListing(`${title} ${displayedBrand}`, relevanceContext)) return [];
       const price = Number(priceRaw.replaceAll(",", ""));
       if (!Number.isFinite(price) || price <= 0) return [];
       const rank = decodeHtml(block.match(/p-link__txt--rank">([\s\S]*?)<\/span>\s*<\/span>/)?.[1] ?? "");
@@ -85,10 +92,8 @@ export const komehyoAdapter: SourceAdapter = {
   enabled: process.env.ENABLE_KOMEHYO_SOURCE === "true",
   async scan(radar) {
     if (!this.enabled) return [];
-    const queries = radar.brands.length
-      ? radar.brands.map((brand) => [brand, ...radar.models, ...radar.include_keywords].filter(Boolean).join(" "))
-      : [[...radar.models, ...radar.include_keywords, radar.category].filter(Boolean).join(" ")];
-    const results = await Promise.all(queries.slice(0, 6).map(async (query) => {
+    const queries = komehyoSearchQueries(radar);
+    const results = await Promise.all(queries.map(async (query) => {
       try {
         const response = await fetch(`${BASE_URL}/search/?q=${encodeURIComponent(query)}`, {
           headers: BROWSER_HEADERS,
@@ -102,6 +107,7 @@ export const komehyoAdapter: SourceAdapter = {
           items: parseKomehyoHtml(html, {
             brands: radar.brands,
             models: radar.models,
+            include_keywords: radar.include_keywords,
             category: radar.category
           }),
           error: null
