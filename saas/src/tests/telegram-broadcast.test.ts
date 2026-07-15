@@ -26,15 +26,15 @@ describe("Telegram broadcast center", () => {
     expect(source).toContain("broadcastKeyboard(recipient.preferred_language");
   });
 
-  it("sends previews only to the configured primary administrator", () => {
+  it("sends previews only through the permanent authenticated admin route", () => {
     const source = read("src/telegram/broadcast.ts");
-    const trigger = read("src/app/api/internal/release-preview/dh-qie-20260715-a91f5e/route.ts");
+    const route = read("src/app/api/admin/telegram-broadcasts/[id]/preview/route.ts");
 
     expect(source).toContain("process.env.ADMIN_TELEGRAM_ID");
     expect(source).toContain("scope: \"preview\"");
-    expect(trigger).toContain("ADMIN_TELEGRAM_ID");
-    expect(trigger).toContain("processed_updates");
-    expect(trigger).toContain("CLAIM_ID = -20260715091");
+    expect(route).toContain("apiUser");
+    expect(route).toContain("isAdmin(auth.user)");
+    expect(route).toContain("sendBroadcastPreview(id, auth.user.id)");
   });
 
   it("requires a preview and explicit DIFFUSER confirmation before mass delivery", () => {
