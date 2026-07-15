@@ -1,4 +1,5 @@
-import { isWatchCategory, looksLikeCompleteWatchTitle, searchTermAlternatives } from "@/lib/search-precision";
+import { intelligentSearchQueries, isIntelligentlyRelevantListing } from "@/lib/query-intelligence";
+import { isWatchCategory, looksLikeCompleteWatchTitle } from "@/lib/search-precision";
 import type { ProductCandidate, Radar, SourceAdapter } from "@/types";
 
 const DEFAULT_EBAY_PRIORITY_SOURCE_URLS = [
@@ -37,16 +38,6 @@ function searchable(value: string) {
 
 function listFromEnv(value?: string) {
   return (value ?? "").split(",").map((entry) => entry.trim()).filter(Boolean);
-}
-
-function unique(values: string[]) {
-  const seen = new Set<string>();
-  return values.map((value) => value.trim()).filter((value) => {
-    const key = searchable(value);
-    if (!value || seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
 }
 
 function boundedInteger(value: string | undefined, fallback: number, minimum: number, maximum: number) {
@@ -95,9 +86,13 @@ export function inferRadarBrand(title: string, brands: string[]) {
   return brands.find((brand) => normalizedTitle.includes(searchable(brand)));
 }
 
-export function isRelevantEbayListing(title: string, category: string, expectedTerms: string[] = []) {
-  if (!isWatchCategory(category)) return true;
-  return looksLikeCompleteWatchTitle(title, expectedTerms);
+export function isRelevantEbayListing(
+  title: string,
+  radar: Pick<Radar, "brands" | "models" | "include_keywords" | "category">,
+  expectedTerms: string[] = [],
+) {
+  if (isWatchCategory(radar.category)) return looksLikeCompleteWatchTitle(title, expectedTerms);
+  return isIntelligentlyRelevantListing(title, radar);
 }
 
 export function ebayConditionGrade(condition?: string) {
@@ -175,41 +170,8 @@ export function ebaySearchUrl(query: string, options: boolean | EbaySearchOption
   return `https://api.ebay.com/buy/browse/v1/item_summary/search?${params.toString()}`;
 }
 
-function keywordCombinations(keywords: string[], limit = 12) {
-  if (!keywords.length) return [[]] as string[][];
-  let combinations: string[][] = [[]];
-  for (const keyword of keywords) {
-    const alternatives = searchTermAlternatives(keyword).slice(0, 4);
-    const next: string[][] = [];
-    for (const combination of combinations) {
-      for (const alternative of alternatives.length ? alternatives : [keyword]) {
-        next.push([...combination, alternative]);
-        if (next.length >= limit) break;
-      }
-      if (next.length >= limit) break;
-    }
-    combinations = next;
-    if (combinations.length >= limit) combinations = combinations.slice(0, limit);
-  }
-  return combinations;
-}
-
 export function ebaySearchQueries(radar: Pick<Radar, "brands" | "models" | "include_keywords" | "category">) {
-  const brands = radar.brands.length ? radar.brands : [""];
-  const models = radar.models.length ? radar.models : [""];
-  const categoryHint = isWatchCategory(radar.category) ? "watch" : radar.category;
-  const keywordVariants = keywordCombinations(radar.include_keywords);
-  const queries: string[] = [];
-
-  for (const brand of brands) {
-    for (const model of models) {
-      for (const keywords of keywordVariants) {
-        queries.push([brand, model, ...keywords, categoryHint].filter(Boolean).join(" "));
-        if (queries.length >= 16) return unique(queries);
-      }
-    }
-  }
-  return unique(queries);
+  return intelligentSearchQueries(radar, 24);
 }
 
 function priorityMarketplaces(marketplaces: string[]) {
@@ -273,7 +235,7 @@ export const ebayAdapter: SourceAdapter = {
         }
         const body = await response.json();
         const items = (body.itemSummaries ?? [])
-          .filter((item: Record<string, any>) => isRelevantEbayListing(String(item.title), radar.category, expectedTerms))
+          .filter((item: Record<string, any>) => isRelevantEbayListing(String(item.title), radar, expectedTerms))
           .filter((item: Record<string, any>) => !priority || !sellers.length || isPriorityJapanCandidate(item))
           .map((item: Record<string, any>): ProductCandidate => ({
             source: "ebay",
