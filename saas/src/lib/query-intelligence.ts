@@ -25,7 +25,6 @@ type IntentRule = {
   synonyms: string[];
   translations: string[];
   sellerTerms?: string[];
-  negativeTerms?: string[];
 };
 
 const INTENTS: IntentRule[] = [
@@ -100,8 +99,7 @@ const GENERIC_CATEGORY_ALIASES: Record<string, string[]> = {
 };
 
 function tokenAlternatives(term: string) {
-  const normalized = normalize(term);
-  const aliases = GENERIC_CATEGORY_ALIASES[normalized] ?? [];
+  const aliases = GENERIC_CATEGORY_ALIASES[normalize(term)] ?? [];
   return unique([term, ...aliases]);
 }
 
@@ -136,14 +134,30 @@ export function buildIntelligentQueries(
   const output: IntelligentQuery[] = [];
   const push = (query: string, precision: IntelligentQuery["precision"]) => {
     const clean = query.trim().replace(/\s+/g, " ");
-    if (!clean) return;
-    if (output.some((item) => normalize(item.query) === normalize(clean))) return;
+    if (!clean || output.some((item) => normalize(item.query) === normalize(clean))) return;
     output.push({ query: clean, intentIds, precision });
   };
 
   const exactBase = [...cores, input.category].filter(Boolean).join(" ");
   push(exactBase, "exact");
   if (cores.length) push(cores.join(" "), "exact");
+
+  if (intents.length > 1) {
+    const intentSignals = intents.map((intent) => unique([
+      ...intent.categoryHints,
+      ...intent.synonyms,
+      ...intent.translations,
+    ]).slice(0, 5));
+    const [first = [], second = []] = intentSignals;
+    for (const left of first) {
+      for (const right of second) {
+        push(`${left} ${right}`, "expanded");
+        push([cores[0], left, right].filter(Boolean).join(" "), "expanded");
+        if (output.length >= Math.min(limit, 14)) break;
+      }
+      if (output.length >= Math.min(limit, 14)) break;
+    }
+  }
 
   const primaryCores = cores.length ? cores : [""];
   for (const core of primaryCores.slice(0, 6)) {
@@ -185,17 +199,17 @@ export function isIntelligentlyRelevantListing(
   if (!normalizedTitle) return false;
   const cores = coreTerms(input).map(normalize).filter(Boolean);
   const intents = detectQueryIntents(input);
-  const intentSignals = unique(intents.flatMap((intent) => [
+  const hasCore = cores.some((term) => normalizedTitle.includes(term));
+  if (hasCore) return true;
+
+  const intentMatches = intents.map((intent) => unique([
     ...intent.categoryHints,
     ...intent.synonyms,
     ...intent.translations,
     ...(intent.sellerTerms ?? []),
-  ])).map(normalize);
+  ]).map(normalize).some((term) => normalizedTitle.includes(term)));
 
-  const hasCore = !cores.length || cores.some((term) => normalizedTitle.includes(term));
-  const hasIntent = !intentSignals.length || intentSignals.some((term) => normalizedTitle.includes(term));
-
-  // A precise brand/model/keyword match is enough. For generic searches, require an intent signal.
-  if (cores.length) return hasCore;
-  return hasIntent;
+  if (intents.length > 1) return intentMatches.every(Boolean);
+  if (!cores.length && intents.length === 1) return intentMatches[0] ?? false;
+  return false;
 }
