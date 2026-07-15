@@ -23,13 +23,48 @@ jobs:
           node-version: 20
           cache: npm
           cache-dependency-path: saas/package-lock.json
-      - name: Patch relevance and eBay adapter
+      - name: Patch query engine and eBay adapter
         run: |
           python3 - <<'PY'
           from pathlib import Path
 
           query_path = Path('saas/src/lib/query-intelligence.ts')
           query_text = query_path.read_text()
+
+          exact_anchor = '''  push(exactBase, "exact");
+  if (cores.length) push(cores.join(" "), "exact");
+
+  const primaryCores = cores.length ? cores : [""];
+'''
+          exact_replacement = '''  push(exactBase, "exact");
+  if (cores.length) push(cores.join(" "), "exact");
+
+  // Combine detected intentions before generic expansion. This makes niche,
+  // multilingual searches useful immediately (e.g. mascot + glasses).
+  if (intents.length > 1) {
+    const primarySignals = intents.map((intent) => unique([
+      ...intent.categoryHints,
+      ...intent.synonyms,
+      ...intent.translations,
+    ]).slice(0, 5));
+    const first = primarySignals[0] ?? [];
+    const second = primarySignals[1] ?? [];
+    for (const left of first) {
+      for (const right of second) {
+        push([left, right].join(" "), "expanded");
+        push([cores[0], left, right].filter(Boolean).join(" "), "expanded");
+        if (output.length >= Math.min(limit, 12)) break;
+      }
+      if (output.length >= Math.min(limit, 12)) break;
+    }
+  }
+
+  const primaryCores = cores.length ? cores : [""];
+'''
+          if exact_anchor not in query_text:
+            raise SystemExit('query expansion anchor not found')
+          query_text = query_text.replace(exact_anchor, exact_replacement)
+
           old_tail = '''  const hasCore = !cores.length || cores.some((term) => normalizedTitle.includes(term));
   const hasIntent = !intentSignals.length || intentSignals.some((term) => normalizedTitle.includes(term));
 
