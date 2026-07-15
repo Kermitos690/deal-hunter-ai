@@ -151,6 +151,7 @@ export function buildIntelligentQueries(input: RadarSearchInput, limit = 24): In
   const sellerTerms = unique(intents.flatMap((intent) => intent.sellerTerms ?? []));
   const output: IntelligentQuery[] = [];
   const push = (query: string, precision: IntelligentQuery["precision"]) => {
+    if (output.length >= limit) return;
     const clean = query.trim().replace(/\s+/g, " ");
     if (!clean || output.some((item) => normalize(item.query) === normalize(clean))) return;
     output.push({ query: clean, intentIds, precision });
@@ -168,8 +169,8 @@ export function buildIntelligentQueries(input: RadarSearchInput, limit = 24): In
 
   if (intents.length > 1) {
     const intentSignals = intents.map((intent) => unique([
-      ...intent.categoryHints,
       ...intent.synonyms,
+      ...intent.categoryHints,
       ...intent.translations,
     ]).slice(0, 5));
     const [first = [], second = []] = intentSignals;
