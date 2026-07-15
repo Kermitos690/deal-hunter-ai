@@ -4,7 +4,8 @@ import { sendTelegramText, type TelegramFailureReason } from "@/telegram/send-al
 export type BroadcastAudience = "all_started" | "active_free" | "active_paid";
 export type BroadcastDeliveryStatus = "sent" | "failed" | "blocked" | "skipped";
 
-type LocalizedContent = Partial<Record<"fr" | "en" | "de" | "it", string>>;
+type SupportedLocale = "fr" | "en" | "de" | "it";
+type LocalizedContent = Partial<Record<SupportedLocale, string>>;
 
 type BroadcastPayload = {
   broadcast_id: string;
@@ -35,117 +36,116 @@ const EVENT_PREFIX = "telegram.broadcast.";
 const RELEASE_BROADCAST_ID = "release-query-intelligence-2026-07";
 const RELEASE_SLUG = "query-intelligence-2026-07";
 
-const RELEASE_CONTENT: Record<"fr" | "en" | "de" | "it", string> = {
+const RELEASE_CONTENT: Record<SupportedLocale, string> = {
   fr: [
-    "🚀 <b>DEAL HUNTER AI — NOUVELLE VERSION</b> 🚀",
+    "⚡ <b>DEAL HUNTER AI PASSE AU NIVEAU SUPÉRIEUR</b>",
     "",
-    "✨ Le moteur de recherche des radars vient d’être amélioré.",
+    "Tes radars recherchent maintenant plus largement, mais trient plus sévèrement.",
     "",
-    "🧠 <b>Recherche plus intelligente</b>",
-    "🔎 Le bot comprend mieux les recherches comme <b>« lunettes mascotte »</b>.",
-    "🌍 Il teste plusieurs formulations réellement utilisées par les vendeurs, notamment en français, anglais, allemand, italien et selon le produit.",
-    "🎯 Il filtre davantage les annonces hors sujet.",
+    "<b>Ce qui change concrètement</b>",
+    "🧠 Compréhension des recherches très précises et des surnoms produit.",
+    "🌍 Variantes vendeurs en français, anglais, allemand, italien et japonais selon la source.",
+    "🛍️ Moteur unifié sur eBay, Ricardo, Anibis, Tutti et Komehyo.",
+    "🎯 Davantage d’annonces analysées, moins de résultats hors sujet.",
+    "📱 Navigation Telegram plus courte, sans empiler inutilement les messages.",
     "",
-    "🛍️ <b>Sources améliorées</b>",
-    "eBay, Ricardo, Anibis, Tutti et Komehyo utilisent maintenant ce moteur de requêtes plus précis.",
+    "<b>Notre différence</b>",
+    "Un résultat n’est pas présenté comme une bonne affaire uniquement parce qu’il est bon marché : budget, marge, preuves de ventes, pertinence et risque restent contrôlés.",
     "",
-    "📱 <b>Telegram plus agréable</b>",
-    "Les écrans sont plus courts, les actions restent accessibles et la navigation empile moins de messages.",
+    "⚠️ <b>Transparence</b>",
+    "Aucun deal ne sera inventé si le marché ne propose rien d’assez solide. Mieux vaut zéro alerte qu’une fausse opportunité.",
     "",
-    "⚠️ <b>En toute transparence</b>",
-    "Cette amélioration augmente la couverture et la pertinence des recherches, mais elle ne garantit pas qu’un deal apparaîtra si aucune annonce ne respecte réellement le budget, la marge, le score ou les autres critères du radar.",
-    "",
-    "🧪 <b>À faire maintenant</b>",
-    "Relance simplement tes radars existants pour profiter de la nouvelle recherche.",
-    "",
-    "💙 Merci de participer à la bêta privée et de nous aider à améliorer Deal Hunter AI."
+    "👇 <b>Action recommandée</b>",
+    "Ouvre tes radars et relance ceux que tu veux tester avec le nouveau moteur."
   ].join("\n"),
   en: [
-    "🚀 <b>DEAL HUNTER AI — NEW VERSION</b> 🚀",
+    "⚡ <b>DEAL HUNTER AI JUST LEVELLED UP</b>",
     "",
-    "✨ The radar search engine has been improved.",
+    "Your radars now search more broadly while filtering more strictly.",
     "",
-    "🧠 <b>Smarter search</b>",
-    "🔎 The bot now understands niche searches more accurately.",
-    "🌍 It tries several seller-style formulations in multiple languages, depending on the product.",
-    "🎯 It filters more unrelated listings.",
+    "<b>What changes</b>",
+    "🧠 Better understanding of precise searches and product nicknames.",
+    "🌍 Seller wording in English, French, German, Italian and Japanese depending on the source.",
+    "🛍️ One query engine across eBay, Ricardo, Anibis, Tutti and Komehyo.",
+    "🎯 More listings analysed, fewer irrelevant results.",
+    "📱 Shorter Telegram screens without unnecessary message stacking.",
     "",
-    "🛍️ <b>Improved sources</b>",
-    "eBay, Ricardo, Anibis, Tutti and Komehyo now use the more precise query engine.",
+    "<b>Our edge</b>",
+    "A cheap listing is not automatically labelled a deal: budget, profit, sold evidence, relevance and risk are still checked.",
     "",
-    "📱 <b>A smoother Telegram experience</b>",
-    "Screens are shorter, actions remain accessible and fewer messages are stacked.",
+    "⚠️ <b>Transparency</b>",
+    "No deal will be invented when the market has nothing solid enough. Zero alerts is better than a false opportunity.",
     "",
-    "⚠️ <b>Transparent note</b>",
-    "This improves search coverage and relevance, but it cannot guarantee a deal when no listing actually meets the radar’s budget, profit, score or other criteria.",
-    "",
-    "🧪 Relaunch your existing radars to use the new search.",
-    "",
-    "💙 Thank you for helping us improve the private beta."
+    "👇 <b>Recommended action</b>",
+    "Open your radars and relaunch the ones you want to test with the new engine."
   ].join("\n"),
   de: [
-    "🚀 <b>DEAL HUNTER AI — NEUE VERSION</b> 🚀",
+    "⚡ <b>DEAL HUNTER AI ERREICHT DIE NÄCHSTE STUFE</b>",
     "",
-    "✨ Die Suchmaschine der Radare wurde verbessert.",
+    "Deine Radare suchen jetzt breiter und filtern gleichzeitig strenger.",
     "",
-    "🧠 <b>Intelligentere Suche</b>",
-    "🔎 Der Bot versteht nun auch spezielle Suchanfragen besser.",
-    "🌍 Je nach Produkt werden mehrere typische Verkäuferbegriffe und Sprachen verwendet.",
-    "🎯 Unpassende Anzeigen werden stärker herausgefiltert.",
+    "<b>Was sich konkret ändert</b>",
+    "🧠 Besseres Verständnis präziser Suchanfragen und Produkt-Spitznamen.",
+    "🌍 Typische Verkäuferbegriffe auf Deutsch, Englisch, Französisch, Italienisch und Japanisch je nach Quelle.",
+    "🛍️ Einheitlicher Suchmotor für eBay, Ricardo, Anibis, Tutti und Komehyo.",
+    "🎯 Mehr analysierte Anzeigen, weniger unpassende Ergebnisse.",
+    "📱 Kürzere Telegram-Ansichten ohne unnötig gestapelte Nachrichten.",
     "",
-    "🛍️ <b>Verbesserte Quellen</b>",
-    "eBay, Ricardo, Anibis, Tutti und Komehyo verwenden jetzt die präzisere Suchlogik.",
+    "<b>Unser Vorteil</b>",
+    "Eine günstige Anzeige gilt nicht automatisch als Deal: Budget, Gewinn, Verkaufsnachweise, Relevanz und Risiko werden weiterhin geprüft.",
     "",
-    "📱 <b>Telegram ist übersichtlicher</b>",
-    "Kürzere Ansichten, erreichbare Aktionen und weniger übereinander gestapelte Nachrichten.",
+    "⚠️ <b>Transparenz</b>",
+    "Wenn der Markt nichts Solides bietet, wird kein Deal erfunden. Keine Meldung ist besser als eine falsche Gelegenheit.",
     "",
-    "⚠️ <b>Transparent erklärt</b>",
-    "Die Verbesserung erhöht Reichweite und Relevanz, garantiert aber keinen Deal, wenn keine Anzeige Budget, Gewinn, Score oder andere Radar-Kriterien erfüllt.",
-    "",
-    "🧪 Starte deine bestehenden Radare erneut, um die neue Suche zu testen.",
-    "",
-    "💙 Danke für deine Hilfe bei der privaten Beta."
+    "👇 <b>Empfohlene Aktion</b>",
+    "Öffne deine Radare und starte die gewünschten Suchen mit dem neuen Motor neu."
   ].join("\n"),
   it: [
-    "🚀 <b>DEAL HUNTER AI — NUOVA VERSIONE</b> 🚀",
+    "⚡ <b>DEAL HUNTER AI SALE DI LIVELLO</b>",
     "",
-    "✨ Il motore di ricerca dei radar è stato migliorato.",
+    "I tuoi radar cercano ora più ampiamente, ma filtrano in modo più severo.",
     "",
-    "🧠 <b>Ricerca più intelligente</b>",
-    "🔎 Il bot comprende meglio anche le ricerche di nicchia.",
-    "🌍 Prova più formulazioni realmente usate dai venditori e più lingue, secondo il prodotto.",
-    "🎯 Filtra meglio gli annunci non pertinenti.",
+    "<b>Cosa cambia concretamente</b>",
+    "🧠 Migliore comprensione delle ricerche precise e dei soprannomi dei prodotti.",
+    "🌍 Formulazioni reali dei venditori in italiano, inglese, francese, tedesco e giapponese secondo la fonte.",
+    "🛍️ Un unico motore per eBay, Ricardo, Anibis, Tutti e Komehyo.",
+    "🎯 Più annunci analizzati, meno risultati fuori tema.",
+    "📱 Schermate Telegram più brevi senza accumulare messaggi inutili.",
     "",
-    "🛍️ <b>Fonti migliorate</b>",
-    "eBay, Ricardo, Anibis, Tutti e Komehyo usano ora il motore di ricerca più preciso.",
+    "<b>Il nostro vantaggio</b>",
+    "Un annuncio economico non viene definito automaticamente un affare: budget, margine, vendite concluse, pertinenza e rischio restano verificati.",
     "",
-    "📱 <b>Telegram più semplice</b>",
-    "Schermate più brevi, azioni sempre disponibili e meno messaggi accumulati.",
+    "⚠️ <b>Trasparenza</b>",
+    "Nessun deal viene inventato quando il mercato non offre nulla di abbastanza solido. Meglio zero avvisi che una falsa opportunità.",
     "",
-    "⚠️ <b>Con trasparenza</b>",
-    "Questo aumenta copertura e pertinenza, ma non garantisce un deal se nessun annuncio rispetta davvero budget, margine, punteggio o gli altri criteri del radar.",
-    "",
-    "🧪 Riavvia i radar esistenti per usare la nuova ricerca.",
-    "",
-    "💙 Grazie per contribuire alla beta privata."
+    "👇 <b>Azione consigliata</b>",
+    "Apri i tuoi radar e rilancia quelli che vuoi testare con il nuovo motore."
   ].join("\n")
 };
 
-function broadcastKeyboard(buttonLabel?: string | null, buttonUrl?: string | null) {
+const KEYBOARD_LABELS: Record<SupportedLocale, { radars: string; inbox: string; menu: string }> = {
+  fr: { radars: "⚡ Tester mes radars", inbox: "📥 Voir l’Inbox", menu: "🧭 Menu principal" },
+  en: { radars: "⚡ Test my radars", inbox: "📥 Open Inbox", menu: "🧭 Main menu" },
+  de: { radars: "⚡ Radare testen", inbox: "📥 Inbox öffnen", menu: "🧭 Hauptmenü" },
+  it: { radars: "⚡ Prova i radar", inbox: "📥 Apri Inbox", menu: "🧭 Menu principale" }
+};
+
+function normalizeLocale(value: unknown): SupportedLocale {
+  const locale = String(value ?? "fr").toLowerCase().slice(0, 2);
+  return locale === "en" || locale === "de" || locale === "it" ? locale : "fr";
+}
+
+function broadcastKeyboard(locale: unknown, buttonLabel?: string | null, buttonUrl?: string | null) {
+  const labels = KEYBOARD_LABELS[normalizeLocale(locale)];
   const rows: Array<Array<Record<string, string>>> = [
+    [{ text: labels.radars, callback_data: "list_radars" }],
     [
-      { text: "🔎 Mes radars", callback_data: "list_radars" },
-      { text: "📥 Inbox", callback_data: "inbox" }
-    ],
-    [{ text: "🧭 Menu", callback_data: "menu" }]
+      { text: labels.inbox, callback_data: "inbox" },
+      { text: labels.menu, callback_data: "menu" }
+    ]
   ];
   if (buttonLabel && buttonUrl) rows.unshift([{ text: buttonLabel, url: buttonUrl }]);
   return { inline_keyboard: rows };
-}
-
-function normalizeLocale(value: unknown): "fr" | "en" | "de" | "it" {
-  const locale = String(value ?? "fr").toLowerCase().slice(0, 2);
-  return locale === "en" || locale === "de" || locale === "it" ? locale : "fr";
 }
 
 function contentFor(payload: BroadcastPayload, locale: unknown) {
@@ -243,7 +243,7 @@ export async function sendBroadcastPreview(broadcastId: string, actorUserId: str
   const result = await sendTelegramText(admin.telegram_id, contentFor(payload, admin.preferred_language), {
     parse_mode: "HTML",
     disable_web_page_preview: true,
-    reply_markup: broadcastKeyboard(payload.button_label, payload.button_url)
+    reply_markup: broadcastKeyboard(admin.preferred_language, payload.button_label, payload.button_url)
   });
   const status = deliveryStatus(result.reason);
   await insertEvent(actorUserId, "delivery", {
@@ -325,7 +325,7 @@ export async function dispatchBroadcastBatch(broadcastId: string, actorUserId: s
     const result = await sendTelegramText(telegramId, contentFor(payload, recipient.preferred_language), {
       parse_mode: "HTML",
       disable_web_page_preview: true,
-      reply_markup: broadcastKeyboard(payload.button_label, payload.button_url)
+      reply_markup: broadcastKeyboard(recipient.preferred_language, payload.button_label, payload.button_url)
     });
     const status = deliveryStatus(result.reason);
     events.push({
