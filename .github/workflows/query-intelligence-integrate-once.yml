@@ -23,10 +23,39 @@ jobs:
           node-version: 20
           cache: npm
           cache-dependency-path: saas/package-lock.json
-      - name: Patch eBay adapter
+      - name: Patch relevance and eBay adapter
         run: |
           python3 - <<'PY'
           from pathlib import Path
+
+          query_path = Path('saas/src/lib/query-intelligence.ts')
+          query_text = query_path.read_text()
+          old_tail = '''  const hasCore = !cores.length || cores.some((term) => normalizedTitle.includes(term));
+  const hasIntent = !intentSignals.length || intentSignals.some((term) => normalizedTitle.includes(term));
+
+  // A precise brand/model/keyword match is enough. For generic searches, require an intent signal.
+  if (cores.length) return hasCore;
+  return hasIntent;
+}'''
+          new_tail = '''  const hasCore = !cores.length || cores.some((term) => normalizedTitle.includes(term));
+  const intentMatches = intents.map((intent) => unique([
+    ...intent.categoryHints,
+    ...intent.synonyms,
+    ...intent.translations,
+    ...(intent.sellerTerms ?? []),
+  ]).map(normalize).some((term) => normalizedTitle.includes(term)));
+  const hasIntent = !intentSignals.length || intentSignals.some((term) => normalizedTitle.includes(term));
+
+  // Keep exact product wording when available. For translated/niche requests,
+  // accept a title that satisfies every detected intent (e.g. eyewear + costume).
+  if (cores.length && hasCore) return true;
+  if (intents.length > 1) return intentMatches.every(Boolean);
+  return !cores.length && hasIntent;
+}'''
+          if old_tail not in query_text:
+            raise SystemExit('query relevance tail not found')
+          query_path.write_text(query_text.replace(old_tail, new_tail))
+
           path = Path('saas/src/sources/ebay.adapter.ts')
           text = path.read_text()
           old_import = 'import { isWatchCategory, looksLikeCompleteWatchTitle, searchTermAlternatives } from "@/lib/search-precision";\n'
@@ -100,6 +129,6 @@ jobs:
           rm .github/workflows/query-intelligence-integrate-once.yml
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add saas/src/sources/ebay.adapter.ts .github/workflows/query-intelligence-integrate-once.yml
+          git add saas/src/lib/query-intelligence.ts saas/src/sources/ebay.adapter.ts .github/workflows/query-intelligence-integrate-once.yml
           git commit -m "Integrate multilingual query intelligence into eBay"
           git push origin feat/query-intelligence-engine
