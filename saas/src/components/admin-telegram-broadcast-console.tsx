@@ -4,6 +4,10 @@ import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { BroadcastSummary } from "@/telegram/broadcast";
 
+function isDispatchConfirmation(value: string | undefined) {
+  return value?.trim().toUpperCase() === "DIFFUSER";
+}
+
 export function AdminTelegramBroadcastConsole({ broadcasts }: { broadcasts: BroadcastSummary[] }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
@@ -38,9 +42,10 @@ export function AdminTelegramBroadcastConsole({ broadcasts }: { broadcasts: Broa
 
   async function createCustom(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    const formElement = event.currentTarget;
     setBusy(true);
     setMessage("");
-    const form = new FormData(event.currentTarget);
+    const form = new FormData(formElement);
     try {
       await json("/api/admin/telegram-broadcasts", {
         title: form.get("title"),
@@ -49,7 +54,7 @@ export function AdminTelegramBroadcastConsole({ broadcasts }: { broadcasts: Broa
         button_label: form.get("button_label") || null,
         button_url: form.get("button_url") || null
       });
-      event.currentTarget.reset();
+      formElement.reset();
       setMessage("✅ Brouillon créé. Envoie d’abord un aperçu à ton compte.");
       router.refresh();
     } catch (error) {
@@ -74,8 +79,8 @@ export function AdminTelegramBroadcastConsole({ broadcasts }: { broadcasts: Broa
   }
 
   async function dispatch(id: string) {
-    if (confirmation[id] !== "DIFFUSER") {
-      setMessage("Écris exactement DIFFUSER avant l’envoi général.");
+    if (!isDispatchConfirmation(confirmation[id])) {
+      setMessage("Écris DIFFUSER, sans tenir compte des majuscules, avant l’envoi général.");
       return;
     }
     if (!window.confirm("Confirmer la diffusion Telegram à tous les destinataires éligibles ?")) return;
@@ -142,37 +147,41 @@ export function AdminTelegramBroadcastConsole({ broadcasts }: { broadcasts: Broa
       <h2 className="text-xl font-black">Campagnes Telegram</h2>
       <p className="mt-1 text-sm text-slate-400">Un aperçu est obligatoire avant toute diffusion générale. Les comptes ayant bloqué le bot sont ensuite exclus automatiquement.</p>
       <div className="mt-5 grid gap-4">
-        {broadcasts.length === 0 ? <p className="text-slate-400">Aucune campagne.</p> : broadcasts.map((broadcast) => <article className="rounded-2xl border border-white/10 bg-white/[.03] p-5" key={broadcast.broadcast_id}>
-          <div className="flex flex-wrap items-start justify-between gap-4">
-            <div className="max-w-3xl">
-              <div className="font-black">{broadcast.title}</div>
-              <div className="mt-1 text-xs text-slate-500">Créée le {new Date(broadcast.created_at).toLocaleString("fr-CH")} · cible {audienceLabel(broadcast.audience)}</div>
-              <pre className="mt-4 max-h-56 overflow-auto whitespace-pre-wrap rounded-xl bg-slate-950/70 p-4 text-xs text-slate-300">{broadcast.content_html.replace(/<[^>]+>/g, "")}</pre>
+        {broadcasts.length === 0 ? <p className="text-slate-400">Aucune campagne.</p> : broadcasts.map((broadcast) => {
+          const confirmationReady = isDispatchConfirmation(confirmation[broadcast.broadcast_id]);
+          return <article className="rounded-2xl border border-white/10 bg-white/[.03] p-5" key={broadcast.broadcast_id}>
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div className="max-w-3xl">
+                <div className="font-black">{broadcast.title}</div>
+                <div className="mt-1 text-xs text-slate-500">Créée le {new Date(broadcast.created_at).toLocaleString("fr-CH")} · cible {audienceLabel(broadcast.audience)}</div>
+                <pre className="mt-4 max-h-56 overflow-auto whitespace-pre-wrap rounded-xl bg-slate-950/70 p-4 text-xs text-slate-300">{broadcast.content_html.replace(/<[^>]+>/g, "")}</pre>
+              </div>
+              <span className={`badge ${broadcast.status === "completed" ? "text-mint" : broadcast.status === "partial" ? "text-amber-200" : ""}`}>{statusLabel(broadcast.status)}</span>
             </div>
-            <span className={`badge ${broadcast.status === "completed" ? "text-mint" : broadcast.status === "partial" ? "text-amber-200" : ""}`}>{statusLabel(broadcast.status)}</span>
-          </div>
 
-          <div className="mt-4 grid gap-2 sm:grid-cols-5">
-            <Metric label="Cible" value={broadcast.target_count} />
-            <Metric label="Envoyés" value={broadcast.sent_count} good />
-            <Metric label="Échecs" value={broadcast.failed_count} danger={broadcast.failed_count > 0} />
-            <Metric label="Bot bloqué" value={broadcast.blocked_count} danger={broadcast.blocked_count > 0} />
-            <Metric label="Ignorés" value={broadcast.skipped_count} />
-          </div>
-
-          <div className="mt-5 flex flex-wrap items-center gap-3">
-            <button className="button-secondary" disabled={busy} onClick={() => preview(broadcast.broadcast_id)} type="button">🧪 Envoyer à mon compte</button>
-            {broadcast.preview_sent_at ? <span className="text-xs text-mint">✅ Aperçu envoyé {new Date(broadcast.preview_sent_at).toLocaleString("fr-CH")}</span> : <span className="text-xs text-amber-200">Aperçu obligatoire</span>}
-          </div>
-
-          {broadcast.preview_sent_at && !broadcast.completed_at ? <div className="mt-4 rounded-xl border border-amber-300/20 bg-amber-300/[.04] p-4">
-            <div className="text-sm font-bold">Validation finale avant diffusion</div>
-            <div className="mt-3 flex flex-wrap gap-3">
-              <input className="input max-w-xs" value={confirmation[broadcast.broadcast_id] ?? ""} onChange={(event) => setConfirmation((current) => ({ ...current, [broadcast.broadcast_id]: event.target.value }))} placeholder="Écrire DIFFUSER" />
-              <button className="button" disabled={busy || confirmation[broadcast.broadcast_id] !== "DIFFUSER"} onClick={() => dispatch(broadcast.broadcast_id)} type="button">🚀 Diffuser à toute la cible</button>
+            <div className="mt-4 grid gap-2 sm:grid-cols-5">
+              <Metric label="Cible" value={broadcast.target_count} />
+              <Metric label="Envoyés" value={broadcast.sent_count} good />
+              <Metric label="Échecs" value={broadcast.failed_count} danger={broadcast.failed_count > 0} />
+              <Metric label="Bot bloqué" value={broadcast.blocked_count} danger={broadcast.blocked_count > 0} />
+              <Metric label="Ignorés" value={broadcast.skipped_count} />
             </div>
-          </div> : null}
-        </article>)}
+
+            <div className="mt-5 flex flex-wrap items-center gap-3">
+              <button className="button-secondary" disabled={busy} onClick={() => preview(broadcast.broadcast_id)} type="button">🧪 Envoyer à mon compte</button>
+              {broadcast.preview_sent_at ? <span className="text-xs text-mint">✅ Aperçu envoyé {new Date(broadcast.preview_sent_at).toLocaleString("fr-CH")}</span> : <span className="text-xs text-amber-200">Aperçu obligatoire</span>}
+            </div>
+
+            {broadcast.preview_sent_at && !broadcast.completed_at ? <div className="mt-4 rounded-xl border border-amber-300/20 bg-amber-300/[.04] p-4">
+              <div className="text-sm font-bold">Validation finale avant diffusion</div>
+              <p className="mt-1 text-xs text-slate-400">Écris « diffuser » avec n’importe quelles majuscules. Les espaces au début ou à la fin sont ignorés.</p>
+              <div className="mt-3 flex flex-wrap gap-3">
+                <input className="input max-w-xs" autoCapitalize="characters" value={confirmation[broadcast.broadcast_id] ?? ""} onChange={(event) => setConfirmation((current) => ({ ...current, [broadcast.broadcast_id]: event.target.value }))} placeholder="Écrire DIFFUSER" />
+                <button className="button" disabled={busy || !confirmationReady} onClick={() => dispatch(broadcast.broadcast_id)} type="button">🚀 Diffuser à toute la cible</button>
+              </div>
+            </div> : null}
+          </article>;
+        })}
       </div>
     </section>
   </div>;
