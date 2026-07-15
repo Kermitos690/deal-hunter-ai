@@ -6,22 +6,24 @@ function read(path: string) {
 }
 
 describe("Telegram broadcast center", () => {
-  it("keeps the release announcement factual and transparent", () => {
+  it("keeps the release announcement factual, differentiated and transparent", () => {
     const source = read("src/telegram/broadcast.ts");
 
-    expect(source).toContain("🚀 <b>DEAL HUNTER AI — NOUVELLE VERSION</b> 🚀");
-    expect(source).toContain("lunettes mascotte");
+    expect(source).toContain("⚡ <b>DEAL HUNTER AI PASSE AU NIVEAU SUPÉRIEUR</b>");
     expect(source).toContain("eBay, Ricardo, Anibis, Tutti et Komehyo");
-    expect(source).toContain("elle ne garantit pas qu’un deal apparaîtra");
+    expect(source).toContain("preuves de ventes");
+    expect(source).toContain("Mieux vaut zéro alerte qu’une fausse opportunité");
     expect(source).not.toMatch(/deal(?:s)? garanti/i);
   });
 
-  it("adds navigation buttons below release messages", () => {
+  it("adds localized, action-first navigation below release messages", () => {
     const source = read("src/telegram/broadcast.ts");
 
-    expect(source).toContain("🔎 Mes radars");
-    expect(source).toContain("📥 Inbox");
-    expect(source).toContain("🧭 Menu");
+    expect(source).toContain("⚡ Tester mes radars");
+    expect(source).toContain("📥 Voir l’Inbox");
+    expect(source).toContain("🧭 Menu principal");
+    expect(source).toContain("⚡ Test my radars");
+    expect(source).toContain("broadcastKeyboard(recipient.preferred_language");
   });
 
   it("sends previews only to the configured primary administrator", () => {
