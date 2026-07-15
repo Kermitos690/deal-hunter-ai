@@ -1,4 +1,5 @@
-import type { ConditionGrade, ProductCandidate, SourceAdapter } from "@/types";
+import { intelligentSearchQueries, isMarketplaceRelevantListing } from "@/lib/query-intelligence";
+import type { ConditionGrade, ProductCandidate, Radar, SourceAdapter } from "@/types";
 import { inferRadarBrand } from "./ebay.adapter";
 
 const BASE_URL = "https://komehyo.jp";
@@ -28,9 +29,13 @@ export function komehyoConditionGrade(value: string): ConditionGrade {
   return "UNKNOWN";
 }
 
+export function komehyoSearchQueries(radar: Pick<Radar, "brands" | "models" | "include_keywords" | "category">) {
+  return intelligentSearchQueries(radar, 6);
+}
+
 export function parseKomehyoHtml(
   html: string,
-  context: { brands: string[]; models: string[]; category: string }
+  context: Pick<Radar, "brands" | "models" | "include_keywords" | "category">
 ): ProductCandidate[] {
   return html
     .split(/<li class="p-lists__item">/)
@@ -44,6 +49,7 @@ export function parseKomehyoHtml(
       const priceRaw = block.match(/p-link__txt--price[^>]*>￥([\d,]+)/)?.[1];
       if (!path || !id || !titleRaw || !priceRaw) return [];
       const title = decodeHtml(titleRaw);
+      if (!isMarketplaceRelevantListing(title, context)) return [];
       const displayedBrand = decodeHtml(
         block.match(/p-link__txt--brand">([\s\S]*?)<\/span>/)?.[1] ?? ""
       );
@@ -85,10 +91,8 @@ export const komehyoAdapter: SourceAdapter = {
   enabled: process.env.ENABLE_KOMEHYO_SOURCE === "true",
   async scan(radar) {
     if (!this.enabled) return [];
-    const queries = radar.brands.length
-      ? radar.brands.map((brand) => [brand, ...radar.models, ...radar.include_keywords].filter(Boolean).join(" "))
-      : [[...radar.models, ...radar.include_keywords, radar.category].filter(Boolean).join(" ")];
-    const results = await Promise.all(queries.slice(0, 6).map(async (query) => {
+    const queries = komehyoSearchQueries(radar);
+    const results = await Promise.all(queries.map(async (query) => {
       try {
         const response = await fetch(`${BASE_URL}/search/?q=${encodeURIComponent(query)}`, {
           headers: BROWSER_HEADERS,
@@ -102,6 +106,7 @@ export const komehyoAdapter: SourceAdapter = {
           items: parseKomehyoHtml(html, {
             brands: radar.brands,
             models: radar.models,
+            include_keywords: radar.include_keywords,
             category: radar.category
           }),
           error: null
