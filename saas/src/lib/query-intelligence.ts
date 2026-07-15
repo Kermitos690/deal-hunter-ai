@@ -1,4 +1,4 @@
-import { isWatchCategory, looksLikeCompleteWatchTitle, searchTermAlternatives } from "@/lib/search-precision";
+import { isWatchCategory, looksLikeCompleteWatchTitle, matchesAnySearchTerm, searchTermAlternatives } from "@/lib/search-precision";
 import type { Radar } from "@/types";
 
 const normalize = (value: string) => value
@@ -168,14 +168,21 @@ export function buildIntelligentQueries(input: RadarSearchInput, limit = 24): In
   }
 
   if (intents.length > 1) {
+    const [first, second] = intents;
+    const firstPrimary = first.synonyms[0] ?? first.categoryHints[0] ?? "";
+    const secondPrimary = second.synonyms[0] ?? second.categoryHints[0] ?? "";
+    push(`${firstPrimary} ${secondPrimary}`, "expanded");
+    push(`${firstPrimary} ${second.categoryHints[0] ?? secondPrimary}`, "expanded");
+    push(`${firstPrimary} ${second.categoryHints[1] ?? secondPrimary}`, "expanded");
+
     const intentSignals = intents.map((intent) => unique([
       ...intent.synonyms,
       ...intent.categoryHints,
       ...intent.translations,
-    ]).slice(0, 5));
-    const [first = [], second = []] = intentSignals;
-    for (const left of first) {
-      for (const right of second) {
+    ]).slice(0, 7));
+    const [firstSignals = [], secondSignals = []] = intentSignals;
+    for (const left of firstSignals) {
+      for (const right of secondSignals) {
         push(`${left} ${right}`, "expanded");
         push([cores[0], left, right].filter(Boolean).join(" "), "expanded");
         if (output.length >= Math.min(limit, 18)) break;
@@ -233,8 +240,18 @@ export function isIntelligentlyRelevantListing(title: string, input: RadarSearch
   return false;
 }
 
-export function isMarketplaceRelevantListing(title: string, input: RadarSearchInput) {
+const OBVIOUS_WATCH_ACCESSORY_RE = /(?:watch (?:glass|crystal|strap|band|case)|replacement (?:glass|crystal|strap|bracelet|dial|bezel)|(?:strap|bracelet|band|crystal|glass) for|(?:dial|cadran|movement|mouvement|watch case|boitier) only|empty (?:watch )?box|watch not included|without watch|sans montre|catalogue?|brochure)/i;
+
+export function isMarketplaceRelevantListing(
+  title: string,
+  input: RadarSearchInput,
+  options: { allowConciseWatchTitle?: boolean } = {},
+) {
   const expectedTerms = [...input.brands, ...input.models, ...input.include_keywords];
-  if (isWatchCategory(input.category)) return looksLikeCompleteWatchTitle(title, expectedTerms);
+  if (isWatchCategory(input.category)) {
+    if (looksLikeCompleteWatchTitle(title, expectedTerms)) return true;
+    if (!options.allowConciseWatchTitle || !expectedTerms.length) return false;
+    return matchesAnySearchTerm(title, expectedTerms) && !OBVIOUS_WATCH_ACCESSORY_RE.test(title);
+  }
   return isIntelligentlyRelevantListing(title, input);
 }
