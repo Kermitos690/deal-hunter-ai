@@ -64,4 +64,24 @@ describe("production release gates", () => {
     expect(result.releaseReady).toBe(true);
     expect(result.summary.warnings).toBe(2);
   });
+
+  it("does not block a healthy production deployment when Vercel hides the Git SHA", () => {
+    const result = evaluateProductionGates({
+      ...healthy,
+      deployment: { ...healthy.deployment, commit: null, branch: null }
+    });
+    expect(result.releaseReady).toBe(true);
+    expect(result.summary.blockingFailures).toBe(0);
+    expect(result.gates.find((item) => item.id === "deployment-runtime")?.status).toBe("pass");
+    expect(result.gates.find((item) => item.id === "deployment-metadata")?.status).toBe("warn");
+  });
+
+  it("still blocks non-production or missing deployment URLs", () => {
+    const result = evaluateProductionGates({
+      ...healthy,
+      deployment: { ...healthy.deployment, environment: "preview", url: null }
+    });
+    expect(result.releaseReady).toBe(false);
+    expect(result.gates.find((item) => item.id === "deployment-runtime")?.status).toBe("fail");
+  });
 });

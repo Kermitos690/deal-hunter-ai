@@ -104,9 +104,21 @@ export function evaluateProductionGates(input: ProductionGateInput) {
     ? gate("environment-warnings", "Configuration prudente", "pass", "Aucun avertissement de configuration.", null, false)
     : gate("environment-warnings", "Configuration prudente", "warn", input.configurationWarnings.join(" ; "), "Revoir les feature flags et les sources activées.", false));
 
-  gates.push(input.deployment.environment === "production" && Boolean(input.deployment.commit) && Boolean(input.deployment.url)
-    ? gate("deployment", "Déploiement identifiable", "pass", `${input.deployment.commit} — ${input.deployment.url}`, null)
-    : gate("deployment", "Déploiement identifiable", "fail", `env=${input.deployment.environment ?? "inconnu"}, commit=${input.deployment.commit ?? "absent"}, url=${input.deployment.url ?? "absente"}`, "Vérifier l’intégration Git Vercel et les métadonnées de déploiement."));
+  const deploymentRuntimeReady = input.deployment.environment === "production" && Boolean(input.deployment.url?.startsWith("https://"));
+  gates.push(deploymentRuntimeReady
+    ? gate("deployment-runtime", "Déploiement production", "pass", `env=production, url=${input.deployment.url}`, null)
+    : gate("deployment-runtime", "Déploiement production", "fail", `env=${input.deployment.environment ?? "inconnu"}, url=${input.deployment.url ?? "absente"}`, "Vérifier l’environnement et l’alias de production Vercel."));
+
+  gates.push(input.deployment.commit
+    ? gate("deployment-metadata", "Métadonnées Git du déploiement", "pass", `${input.deployment.commit}${input.deployment.branch ? ` — ${input.deployment.branch}` : ""}`, null, false)
+    : gate(
+        "deployment-metadata",
+        "Métadonnées Git du déploiement",
+        "warn",
+        "Le SHA Git n’est pas exposé au runtime, mais le déploiement production est accessible.",
+        "Activer “Automatically expose System Environment Variables” dans Vercel puis redéployer pour afficher VERCEL_GIT_COMMIT_SHA.",
+        false
+      ));
 
   gates.push(input.telegram.status === "healthy" && input.telegram.botMatches === true
     ? gate("telegram-bot", "Bot Telegram attendu", "pass", "getMe correspond au bot configuré.", null)
