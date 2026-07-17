@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { evaluateProductionGates } from "@/lib/admin/production-gates";
 import { configuredSources, summarizeSourceLogs } from "@/lib/admin/source-health";
 import { telegramHealth } from "@/lib/admin/telegram-health";
 import { stripeConfigured, stripeEnabled } from "@/lib/billing/stripe";
@@ -25,6 +26,7 @@ export default async function HealthPage() {
   const [
     telegram,
     lastScan,
+    lastSuccessfulScan,
     logs,
     dueRadars,
     lockedRadars,
@@ -35,6 +37,7 @@ export default async function HealthPage() {
   ] = await Promise.all([
     telegramHealth(),
     db.from("scan_logs").select("*").order("started_at", { ascending: false }).limit(1).maybeSingle(),
+    db.from("scan_logs").select("*").eq("status", "success").order("started_at", { ascending: false }).limit(1).maybeSingle(),
     db.from("source_scan_logs")
       .select("source,status,candidates_found,duration_ms,error_message,started_at,finished_at")
       .gte("started_at", week)
@@ -53,14 +56,17 @@ export default async function HealthPage() {
 
   const summaries = summarizeSourceLogs(logs.data ?? []);
   const summaryBySource = new Map(summaries.map((item) => [item.source, item]));
+  const configurations = configuredSources();
   const latestScheduler = new Map<string, any>();
   for (const run of schedulerRuns.data ?? []) {
     if (!latestScheduler.has(run.job)) latestScheduler.set(run.job, run);
   }
+  const schedulerLatest = Object.fromEntries(latestScheduler);
   const missing = missingEnvironmentVariables();
   const warnings = productionConfigurationWarnings();
   const databaseErrors = [
     lastScan.error,
+    lastSuccessfulScan.error,
     logs.error,
     dueRadars.error,
     lockedRadars.error,
@@ -68,24 +74,82 @@ export default async function HealthPage() {
     pendingAlerts.error,
     failedAlerts.error,
     schedulerRuns.error
-  ].filter(Boolean);
+  ].filter(Boolean).map((error) => error?.message ?? "Erreur Supabase inconnue");
+  const deployment = {
+    commit: process.env.VERCEL_GIT_COMMIT_SHA ?? null,
+    branch: process.env.VERCEL_GIT_COMMIT_REF ?? null,
+    environment: process.env.VERCEL_ENV ?? process.env.NODE_ENV ?? null,
+    url: process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : process.env.APP_BASE_URL ?? null
+  };
+  const ebayConfig = configurations.find((item) => item.source === "ebay") ?? null;
+  const ebayRuntime = summaryBySource.get("ebay") ?? null;
+  const release = evaluateProductionGates({
+    databaseErrors,
+    missingEnvironmentVariables: missing,
+    configurationWarnings: warnings,
+    telegram: {
+      status: telegram.status,
+      botMatches: telegram.botMatches,
+      webhookMatches: telegram.webhookMatches,
+      pendingUpdateCount: telegram.pendingUpdateCount,
+      lastErrorMessage: telegram.lastErrorMessage
+    },
+    failedAlerts: Number(failedAlerts.count ?? 0),
+    lastSuccessfulScanAt: lastSuccessfulScan.data?.started_at ?? null,
+    ebay: ebayConfig ? {
+      configured: ebayConfig.status === "configured",
+      successes: ebayRuntime?.successes ?? 0,
+      candidates: ebayRuntime?.candidates ?? 0,
+      lastSuccessAt: ebayRuntime?.lastSuccessAt ?? null,
+      lastError: ebayRuntime?.lastError ?? null
+    } : null,
+    scheduler: schedulerLatest,
+    deployment
+  });
 
   return <main className="mx-auto max-w-7xl p-6 md:p-10">
     <Link href="/admin" className="text-slate-400">← Administration</Link>
     <div className="mt-4 flex flex-wrap items-end justify-between gap-4">
       <div>
-        <div className="badge text-mint">Production</div>
+        <div className="badge text-mint">Production Truth Gate</div>
         <h1 className="mt-3 text-4xl font-black">System Health</h1>
-        <p className="mt-2 text-slate-400">État réel du déploiement, des schedulers, de Telegram et des sources.</p>
+        <p className="mt-2 text-slate-400">Verdict de publication fondé sur des preuves réelles, pas seulement sur la présence du code.</p>
       </div>
-      <Link className="button-secondary" href="/api/admin/health">Voir le JSON complet</Link>
+      <div className="flex flex-wrap gap-3">
+        <Link className="button-secondary" href="/api/admin/health">Voir le JSON</Link>
+        <a className="button-secondary" href="/api/admin/health?download=1">Exporter le rapport</a>
+      </div>
     </div>
 
-    <section className="mt-8 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+    <section className={`card mt-8 ${release.releaseReady ? "border-mint/40" : "border-red-500/40"}`}>
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div>
+          <p className="text-sm uppercase tracking-[0.2em] text-slate-500">Verdict bêta</p>
+          <h2 className="mt-2 text-3xl font-black">{release.releaseReady ? "PRÊT" : "BLOQUÉ"}</h2>
+        </div>
+        <div className="grid grid-cols-3 gap-3 text-center">
+          <Metric k="Passés" v={release.summary.passed}/>
+          <Metric k="Alertes" v={release.summary.warnings}/>
+          <Metric k="Blocages" v={release.summary.blockingFailures}/>
+        </div>
+      </div>
+      <div className="mt-6 grid gap-3 lg:grid-cols-2">
+        {release.gates.map((item) => <div className="rounded-xl bg-black/20 p-4" key={item.id}>
+          <div className="flex items-center justify-between gap-3">
+            <strong>{item.label}</strong>
+            <span className="badge">{item.status}</span>
+          </div>
+          <p className="mt-2 text-sm text-slate-300">{item.evidence}</p>
+          {item.action && <p className="mt-2 text-xs text-orange-200">Action : {item.action}</p>}
+        </div>)}
+      </div>
+    </section>
+
+    <section className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
       <StatusCard title="Base de données" status={databaseErrors.length ? "degraded" : "connected"} detail={databaseErrors.length ? `${databaseErrors.length} erreur(s) de lecture` : "Requêtes de santé réussies"}/>
       <StatusCard title="Telegram" status={telegram.status} detail={telegram.botUsername ? `@${telegram.botUsername}` : "Bot non vérifié"}/>
       <StatusCard title="Stripe" status={!stripeEnabled() ? "disabled" : stripeConfigured() ? "configured" : "misconfigured"} detail={!stripeEnabled() ? "Bêta privée sans paiement" : "Activation explicite"}/>
-      <StatusCard title="Environnement" status={missing.length || warnings.length ? "degraded" : "healthy"} detail={`${missing.length} manquante(s), ${warnings.length} avertissement(s)`}/>
+      <StatusCard title="Déploiement" status={deployment.environment ?? "unknown"} detail={deployment.commit?.slice(0, 8) ?? "Commit absent"}/>
     </section>
 
     <section className="card mt-6">
@@ -126,7 +190,7 @@ export default async function HealthPage() {
     </section>
 
     <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-      {configuredSources().map((config) => {
+      {configurations.map((config) => {
         const health = summaryBySource.get(config.source);
         return <section className="card" key={config.source}>
           <div className="flex items-center justify-between gap-3"><h2 className="font-black">{config.source}</h2><span className="badge">{config.status}</span></div>
@@ -146,7 +210,7 @@ export default async function HealthPage() {
     {(missing.length > 0 || warnings.length > 0) && <section className="card mt-6">
       <h2 className="font-bold">Configuration à corriger</h2>
       {missing.length > 0 && <p className="mt-3 text-sm text-red-300">Variables manquantes : {missing.join(", ")}</p>}
-      {warnings.length > 0 && <p className="mt-3 text-sm text-orange-200">Avertissements : {warnings.join(", ")}</p>}
+      {warnings.length > 0 && <p className="mt-3 text-sm text-orange-200">Avertissements : {warnings.join(" ; ")}</p>}
     </section>}
   </main>;
 }

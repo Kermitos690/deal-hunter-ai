@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { apiUser, isAdmin, jsonError } from "@/lib/api";
+import { evaluateProductionGates } from "@/lib/admin/production-gates";
 import { configuredSources, summarizeSourceLogs } from "@/lib/admin/source-health";
 import { telegramHealth } from "@/lib/admin/telegram-health";
 import { stripeConfigured, stripeEnabled } from "@/lib/billing/stripe";
@@ -8,7 +9,7 @@ import { missingEnvironmentVariables, productionConfigurationWarnings } from "@/
 
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+export async function GET(request: Request) {
   const auth = await apiUser();
   if ("response" in auth) return auth.response;
   if (!isAdmin(auth.user)) return jsonError("Accès administrateur requis.", 403);
@@ -105,18 +106,46 @@ export async function GET() {
   for (const run of schedulerRuns.data ?? []) {
     if (!latestSchedulerRunByJob.has(run.job)) latestSchedulerRunByJob.set(run.job, run);
   }
+  const schedulerLatest = Object.fromEntries(latestSchedulerRunByJob);
 
   const missing = missingEnvironmentVariables();
   const configurationWarnings = productionConfigurationWarnings();
-  const degraded =
-    missing.length > 0 ||
-    configurationWarnings.length > 0 ||
-    databaseErrors.length > 0 ||
-    telegram.status !== "healthy" ||
-    Number(failedAlerts.count ?? 0) > 0;
+  const deployment = {
+    commit: process.env.VERCEL_GIT_COMMIT_SHA ?? null,
+    branch: process.env.VERCEL_GIT_COMMIT_REF ?? null,
+    environment: process.env.VERCEL_ENV ?? process.env.NODE_ENV ?? null,
+    url: process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : process.env.APP_BASE_URL ?? null
+  };
+  const ebay = sources.find((source) => source.source === "ebay") ?? null;
+  const release = evaluateProductionGates({
+    databaseErrors,
+    missingEnvironmentVariables: missing,
+    configurationWarnings,
+    telegram: {
+      status: telegram.status,
+      botMatches: telegram.botMatches,
+      webhookMatches: telegram.webhookMatches,
+      pendingUpdateCount: telegram.pendingUpdateCount,
+      lastErrorMessage: telegram.lastErrorMessage
+    },
+    failedAlerts: Number(failedAlerts.count ?? 0),
+    lastSuccessfulScanAt: lastSuccessfulScan.data?.started_at ?? null,
+    ebay: ebay ? {
+      configured: ebay.status === "configured",
+      successes: ebay.runtime.successes,
+      candidates: ebay.runtime.candidates,
+      lastSuccessAt: ebay.runtime.lastSuccessAt,
+      lastError: ebay.runtime.lastError
+    } : null,
+    scheduler: schedulerLatest,
+    deployment
+  });
 
-  return NextResponse.json({
+  const degraded = !release.releaseReady || release.summary.warnings > 0;
+  const checkedAt = new Date().toISOString();
+  const report = {
     status: degraded ? "degraded" : "ok",
+    release,
     database: {
       status: databaseErrors.length ? "degraded" : "connected",
       errors: databaseErrors
@@ -124,14 +153,9 @@ export async function GET() {
     telegram,
     scheduler: {
       configured: Boolean(process.env.CRON_SECRET),
-      latest: Object.fromEntries(latestSchedulerRunByJob)
+      latest: schedulerLatest
     },
-    deployment: {
-      commit: process.env.VERCEL_GIT_COMMIT_SHA ?? null,
-      branch: process.env.VERCEL_GIT_COMMIT_REF ?? null,
-      environment: process.env.VERCEL_ENV ?? process.env.NODE_ENV ?? null,
-      url: process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : process.env.APP_BASE_URL ?? null
-    },
+    deployment,
     stripe: {
       enabled: stripeEnabled(),
       configured: stripeConfigured(),
@@ -164,6 +188,16 @@ export async function GET() {
     lastScan: lastScan.data ?? null,
     lastSuccessfulScan: lastSuccessfulScan.data ?? null,
     sources,
-    checkedAt: new Date().toISOString()
-  }, { headers: { "cache-control": "no-store" } });
+    checkedAt
+  };
+
+  const download = new URL(request.url).searchParams.get("download") === "1";
+  return NextResponse.json(report, {
+    headers: {
+      "cache-control": "no-store",
+      ...(download ? {
+        "content-disposition": `attachment; filename="deal-hunter-production-truth-${checkedAt.slice(0, 10)}.json"`
+      } : {})
+    }
+  });
 }
