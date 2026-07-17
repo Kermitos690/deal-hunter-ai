@@ -76,7 +76,7 @@ export async function requireUser(returnTo = "/dashboard") {
   return user;
 }
 
-export async function requireAdmin(returnTo = "/admin") {
+export async function requireAdmin(returnTo = "/admin/system-health") {
   const user = await requireUser(returnTo);
   if (user.role !== "admin" || user.telegram_id !== process.env.ADMIN_TELEGRAM_ID) {
     redirect("/dashboard");
