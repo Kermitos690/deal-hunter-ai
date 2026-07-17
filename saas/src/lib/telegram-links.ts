@@ -1,6 +1,8 @@
+import { telegramReturnPayload } from "@/lib/security/return-path";
+
 const DEFAULT_BOT_USERNAME = "deal_hunter_cards_bot";
 
-export type TelegramStartPayload = "dashboard" | "newradar" | "radars" | "deals" | "alerts" | "settings";
+export type TelegramStartPayload = "dashboard" | "newradar" | "radars" | "deals" | "alerts" | "settings" | `return_${string}`;
 
 export function telegramBotUsername() {
   return (process.env.NEXT_PUBLIC_TELEGRAM_BOT_USERNAME || DEFAULT_BOT_USERNAME).replace(/^@/, "");
@@ -8,6 +10,10 @@ export function telegramBotUsername() {
 
 export function telegramStartUrl(payload: TelegramStartPayload = "dashboard") {
   return `https://t.me/${telegramBotUsername()}?start=${encodeURIComponent(payload)}`;
+}
+
+export function telegramLoginStartUrl(returnTo?: string | null) {
+  return telegramStartUrl(telegramReturnPayload(returnTo) as TelegramStartPayload);
 }
 
 export function telegramBotUrl() {
