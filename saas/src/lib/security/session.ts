@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { serviceDb } from "@/lib/db/server";
 import { env } from "@/lib/env";
 import { effectivePlanForUser } from "@/lib/referrals/referral-program";
+import { safeReturnPath } from "@/lib/security/return-path";
 import type { AppUser } from "@/types";
 
 const COOKIE = "deal_hunter_session";
@@ -69,14 +70,14 @@ export async function currentUser(): Promise<AppUser | null> {
   return data as AppUser;
 }
 
-export async function requireUser() {
+export async function requireUser(returnTo = "/dashboard") {
   const user = await currentUser();
-  if (!user) redirect("/login");
+  if (!user) redirect(`/login?next=${encodeURIComponent(safeReturnPath(returnTo))}`);
   return user;
 }
 
-export async function requireAdmin() {
-  const user = await requireUser();
+export async function requireAdmin(returnTo = "/admin/system-health") {
+  const user = await requireUser(returnTo);
   if (user.role !== "admin" || user.telegram_id !== process.env.ADMIN_TELEGRAM_ID) {
     redirect("/dashboard");
   }
