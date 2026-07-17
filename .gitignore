@@ -1,0 +1,2 @@
+# One-shot operational artifacts must never be committed.
+.tmp-release-broadcast/

@@ -6,13 +6,11 @@ on:
     types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - "saas/**"
-      - "vercel.json"
       - ".github/workflows/saas-ci.yml"
   push:
     branches: [main]
     paths:
       - "saas/**"
-      - "vercel.json"
       - ".github/workflows/saas-ci.yml"
   workflow_dispatch:
 
