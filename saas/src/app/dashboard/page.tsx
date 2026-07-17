@@ -6,6 +6,7 @@ import { telegramStartUrl } from "@/lib/telegram-links";
 
 export default async function DashboardPage() {
   const user = await requireUser();
+  const isAdmin = user.role === "admin" && user.telegram_id === process.env.ADMIN_TELEGRAM_ID;
   const db = serviceDb();
   const [{ count: radars }, { count: alerts }, { data: deals }, { data: scans }, { data: activeRadars }] = await Promise.all([
     db.from("radars").select("*", { count: "exact", head: true }).eq("user_id", user.id).eq("is_active", true),
@@ -33,6 +34,7 @@ export default async function DashboardPage() {
           <Link className="button" href="/dashboard/radars/new">Créer sur le web</Link>
           <a className="button-secondary" href={telegramStartUrl("newradar")} target="_blank">Créer dans Telegram</a>
           <Link className="button-secondary" href="/dashboard/deals">Voir les opportunités</Link>
+          {isAdmin && <Link className="button-secondary" href="/admin/system-health">Administration</Link>}
         </div>
       </section>
       <TelegramQuickPanel user={user} compact />
