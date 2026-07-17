@@ -5,14 +5,16 @@ import {
   sessionCookieName,
   verifySessionToken
 } from "@/lib/security/session";
-import { safeReturnPath } from "@/lib/security/return-path";
+import { returnPathCookieName, safeReturnPath } from "@/lib/security/return-path";
 import { claimReferralCode } from "@/lib/referrals/server";
 import { referralCookieName } from "@/lib/referrals/referral-program";
 
 export async function GET(request: NextRequest) {
   const url = new URL(request.url);
   const telegramId = verifySessionToken(url.searchParams.get("token"));
-  const returnTo = safeReturnPath(url.searchParams.get("next"));
+  const returnTo = safeReturnPath(
+    url.searchParams.get("next") ?? request.cookies.get(returnPathCookieName)?.value
+  );
   if (!telegramId) return NextResponse.redirect(new URL(`/login?error=expired&next=${encodeURIComponent(returnTo)}`, url));
 
   const { data: user } = await serviceDb()
@@ -40,5 +42,6 @@ export async function GET(request: NextRequest) {
     maxAge: 60 * 60 * 24 * 30
   });
   response.cookies.delete(referralCookieName);
+  response.cookies.delete(returnPathCookieName);
   return response;
 }
