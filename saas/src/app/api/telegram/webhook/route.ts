@@ -1,11 +1,17 @@
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
 import type { Update } from "telegraf/types";
 import { jsonError } from "@/lib/api";
 import { serviceDb } from "@/lib/db/server";
 import { createBot } from "@/telegram/bot";
+import {
+  acknowledgeAdminInboxRefill,
+  isAdminInboxRefillUpdate,
+  runAdminInboxRefill
+} from "@/telegram/admin-inbox-refill";
 import { classifyTelegramWebhookPayload } from "@/telegram/webhook-utils";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 300;
 
 const MAX_TELEGRAM_WEBHOOK_BYTES = 512_000;
 
@@ -45,6 +51,14 @@ export async function POST(request: Request) {
   }
 
   try {
+    if (isAdminInboxRefillUpdate(update)) {
+      const refill = await acknowledgeAdminInboxRefill(update);
+      if (refill?.authorized) {
+        after(() => runAdminInboxRefill(refill));
+      }
+      return NextResponse.json({ ok: true, scheduled: Boolean(refill?.authorized) });
+    }
+
     await createBot().handleUpdate(update as unknown as Update);
   } catch (error) {
     // The row is a processing claim, not proof of successful handling. Releasing it
