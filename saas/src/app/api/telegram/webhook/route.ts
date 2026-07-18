@@ -1,4 +1,4 @@
-import { after, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import type { Update } from "telegraf/types";
 import { jsonError } from "@/lib/api";
 import { serviceDb } from "@/lib/db/server";
@@ -54,9 +54,13 @@ export async function POST(request: Request) {
     if (isAdminInboxRefillUpdate(update)) {
       const refill = await acknowledgeAdminInboxRefill(update);
       if (refill?.authorized) {
-        after(() => runAdminInboxRefill(refill));
+        // The callback is already acknowledged before the scans start. Keeping the
+        // work awaited makes Vercel retain the invocation until the final Telegram
+        // summary is sent. Telegram retries are harmless because processed_updates
+        // rejects the duplicate update while this invocation is still running.
+        await runAdminInboxRefill(refill);
       }
-      return NextResponse.json({ ok: true, scheduled: Boolean(refill?.authorized) });
+      return NextResponse.json({ ok: true, completed: Boolean(refill?.authorized) });
     }
 
     await createBot().handleUpdate(update as unknown as Update);

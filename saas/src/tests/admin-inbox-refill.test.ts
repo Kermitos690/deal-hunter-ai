@@ -62,7 +62,7 @@ describe("admin Inbox refill", () => {
     expect(formatAdminInboxRefillSummary(summary)).toContain("3 nouveau(x) deal(s) unique(s)");
   });
 
-  it("keeps the action admin-only and schedules it after the webhook response", () => {
+  it("keeps the action admin-only and retains the Vercel invocation until completion", () => {
     const service = read("src/telegram/admin-inbox-refill.ts");
     const webhook = read("src/app/api/telegram/webhook/route.ts");
     const menu = read("src/telegram/menu.ts");
@@ -70,7 +70,8 @@ describe("admin Inbox refill", () => {
     expect(service).toContain("request.telegramId !== process.env.ADMIN_TELEGRAM_ID");
     expect(service).toContain("runRadarScan(radar.id, user.id, { updateRadarSchedule: false })");
     expect(service).toContain('.update({ status: "inbox" })');
-    expect(webhook).toContain("after(() => runAdminInboxRefill(refill))");
+    expect(webhook).toContain("await runAdminInboxRefill(refill)");
+    expect(webhook).not.toContain("after(() => runAdminInboxRefill(refill))");
     expect(webhook).toContain("export const maxDuration = 300");
     expect(menu).toContain("Remplir l’Inbox (admin)");
   });
